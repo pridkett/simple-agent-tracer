@@ -1,0 +1,11 @@
+{
+  "name": "simple-agent-tracer-integrations",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "0.223.1",
+    "@opentelemetry/resources": "2.12.1",
+    "@opentelemetry/sdk-trace": "2.12.1"
+  }
+}

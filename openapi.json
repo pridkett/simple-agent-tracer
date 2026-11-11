@@ -1,0 +1,2496 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Simple Agent Tracer",
+    "version": "0.1.0",
+    "description": "Local mode permits unauthenticated query, owner actions and default-project ingestion on a loopback listener. Authenticated deployments use project-scoped bearer credentials or an OIDC owner session. Owner writes use same-origin verification. Credentials carry either read or ingest access."
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Liveness",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Process is running.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "summary": "Readiness",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Database is reachable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Database unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "summary": "OpenAPI description",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "This document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "summary": "List projects",
+        "security": [
+          {},
+          {
+            "projectRead": []
+          },
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accessible projects.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Project"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a project",
+        "security": [
+          {},
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "patch": {
+        "summary": "Update project capture or retention",
+        "security": [
+          {},
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectPatch"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/retention/keep": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "summary": "Keep or unkeep a batch of traces and sessions",
+        "security": [
+          {},
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "All IDs were validated and updated atomically. At most 200 IDs across both arrays."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Keep"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/metadata/keys": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Discover metadata keys",
+        "security": [
+          {},
+          {
+            "projectRead": []
+          },
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded key list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum returned records.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project}/metadata/values": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Discover typed metadata values",
+        "security": [
+          {},
+          {
+            "projectRead": []
+          },
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded typed value list. Use json verbatim for exact filters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MetadataValue"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum returned records.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "description": "Attribute key.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project}/traces": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "List traces",
+        "security": [
+          {},
+          {
+            "projectRead": []
+          },
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ordered by descending activity time, then ID. One descendant must satisfy all supplied child predicates. Totals cover the full entity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum returned records.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque continuation token from nextCursor. Keep filters and resource URL unchanged between pages.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive last activity lower bound.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "RFC 3339 UTC timestamp. Absent when unknown."
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive last activity upper bound.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "RFC 3339 UTC timestamp. Absent when unknown."
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Producer credential source namespace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "service",
+            "in": "query",
+            "description": "Exact resource service.name.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session",
+            "in": "query",
+            "description": "Internal session ID, observed external ID, or resolved alias.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation",
+            "in": "query",
+            "description": "Exact semantic operation.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "description": "Exact requested or served model.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tool",
+            "in": "query",
+            "description": "Exact tool name or span name.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "description": "Exact trace ID.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "metadataKey",
+            "in": "query",
+            "description": "Exact attribute key. Supplying only the key tests for presence.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "metadataValue",
+            "in": "query",
+            "description": "JSON literal for typed exact match. Quote strings and use a fractional part for whole-valued doubles.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Exact OTLP status.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "STATUS_CODE_UNSET",
+                "STATUS_CODE_OK",
+                "STATUS_CODE_ERROR"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project}/traces/{trace}": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "trace",
+          "in": "path",
+          "description": "OTLP trace ID in lowercase hexadecimal.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Get trace summary",
+        "security": [
+          {},
+          {
+            "projectRead": []
+          },
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entity and unfiltered rollups.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Entity"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/traces/{trace}/export": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "trace",
+          "in": "path",
+          "description": "OTLP trace ID in lowercase hexadecimal.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Download trace JSON",
+        "security": [
+          {},
+          {
+            "projectRead": []
+          },
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Streamed versioned JSON. A completed stream closes the spans array and object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Export"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/sessions": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "List sessions",
+        "security": [
+          {},
+          {
+            "projectRead": []
+          },
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ordered by descending activity time, then ID. One descendant must satisfy all supplied child predicates. Totals cover the full entity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum returned records.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque continuation token from nextCursor. Keep filters and resource URL unchanged between pages.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive last activity lower bound.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "RFC 3339 UTC timestamp. Absent when unknown."
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive last activity upper bound.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "RFC 3339 UTC timestamp. Absent when unknown."
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Producer credential source namespace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "service",
+            "in": "query",
+            "description": "Exact resource service.name.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session",
+            "in": "query",
+            "description": "Internal session ID, observed external ID, or resolved alias.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation",
+            "in": "query",
+            "description": "Exact semantic operation.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "description": "Exact requested or served model.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tool",
+            "in": "query",
+            "description": "Exact tool name or span name.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "description": "Exact trace ID.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "metadataKey",
+            "in": "query",
+            "description": "Exact attribute key. Supplying only the key tests for presence.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "metadataValue",
+            "in": "query",
+            "description": "JSON literal for typed exact match. Quote strings and use a fractional part for whole-valued doubles.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Exact OTLP status.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "STATUS_CODE_UNSET",
+                "STATUS_CODE_OK",
+                "STATUS_CODE_ERROR"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project}/sessions/{session}": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "session",
+          "in": "path",
+          "description": "Stable tracer session ID. Older IDs resolve to the current session.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Get session summary",
+        "security": [
+          {},
+          {
+            "projectRead": []
+          },
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entity and unfiltered rollups.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Entity"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/sessions/{session}/export": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "session",
+          "in": "path",
+          "description": "Stable tracer session ID. Older IDs resolve to the current session.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Download session JSON",
+        "security": [
+          {},
+          {
+            "projectRead": []
+          },
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Streamed versioned JSON. A completed stream closes the spans array and object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Export"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/traces/{trace}/spans": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "trace",
+          "in": "path",
+          "description": "OTLP trace ID in lowercase hexadecimal.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      ],
+      "get": {
+        "summary": "List trace spans",
+        "security": [
+          {},
+          {
+            "projectRead": []
+          },
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ordered by start time with server receive time as fallback, then trace ID and span ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpanPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum returned records.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque continuation token from nextCursor. Keep filters and resource URL unchanged between pages.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project}/traces/{trace}/spans/{span}": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "trace",
+          "in": "path",
+          "description": "OTLP trace ID in lowercase hexadecimal.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        },
+        {
+          "name": "span",
+          "in": "path",
+          "description": "OTLP span ID in lowercase hexadecimal.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Get span detail",
+        "security": [
+          {},
+          {
+            "projectRead": []
+          },
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stored span, provenance, messages, events and links.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpanRow"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/sessions/{session}/timeline": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "session",
+          "in": "path",
+          "description": "Stable tracer session ID. Older IDs resolve to the current session.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Get session activity and transcript",
+        "security": [
+          {},
+          {
+            "projectRead": []
+          },
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Execution-ordered spans with best-effort transcript for this page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelinePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum returned records.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque continuation token from nextCursor. Keep filters and resource URL unchanged between pages.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project}/sessions/{session}/turns": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "session",
+          "in": "path",
+          "description": "Stable tracer session ID. Older IDs resolve to the current session.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      ],
+      "get": {
+        "summary": "List explicit turns",
+        "security": [
+          {},
+          {
+            "projectRead": []
+          },
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Turns in execution order. Calls without turn membership are available in the session timeline.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum returned records.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque continuation token from nextCursor. Keep filters and resource URL unchanged between pages.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project}/sessions/{session}/turns/{turn}": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "session",
+          "in": "path",
+          "description": "Stable tracer session ID. Older IDs resolve to the current session.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        },
+        {
+          "name": "turn",
+          "in": "path",
+          "description": "Stable tracer turn ID.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Get turn activity and transcript",
+        "security": [
+          {},
+          {
+            "projectRead": []
+          },
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Execution-ordered turn spans and transcript.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelinePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum returned records.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque continuation token from nextCursor. Keep filters and resource URL unchanged between pages.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/traces": {
+      "post": {
+        "summary": "Export OTLP traces",
+        "security": [
+          {},
+          {
+            "ingestCredential": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ExportTraceServiceResponse, with optional partial success. Accepted spans are committed before acknowledgment.",
+            "content": {
+              "application/x-protobuf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid protobuf envelope. Body is a binary google.rpc.Status.",
+            "content": {
+              "application/x-protobuf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ingest credential required. Body is a binary google.rpc.Status.",
+            "content": {
+              "application/x-protobuf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request, decoded size, or span count exceeds limits. Body is a binary google.rpc.Status.",
+            "content": {
+              "application/x-protobuf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type or encoding. Body is a binary google.rpc.Status.",
+            "content": {
+              "application/x-protobuf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Receiver busy. Retry-After is provided. Body is a binary google.rpc.Status.",
+            "content": {
+              "application/x-protobuf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Temporary database failure. Retry-After is provided. Body is a binary google.rpc.Status.",
+            "content": {
+              "application/x-protobuf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Content-Encoding",
+            "in": "header",
+            "description": "Optional gzip transport encoding.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "identity",
+                "gzip"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-protobuf": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "get": {
+        "summary": "Start owner OIDC login",
+        "security": [],
+        "responses": {
+          "303": {
+            "description": "Redirect."
+          }
+        }
+      }
+    },
+    "/auth/callback": {
+      "get": {
+        "summary": "Complete owner OIDC login",
+        "security": [],
+        "responses": {
+          "303": {
+            "description": "Redirect."
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "summary": "End owner session",
+        "security": [
+          {},
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session cleared."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/auth/status": {
+      "get": {
+        "summary": "Get browser sign-in status",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Whether OIDC is configured and this browser has an owner session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "oidc": {
+                      "type": "boolean"
+                    },
+                    "signedIn": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "oidc",
+                    "signedIn"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+          },
+          "retentionDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 36500,
+            "default": 30
+          },
+          "captureContent": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "retentionDays",
+          "captureContent"
+        ]
+      },
+      "ProjectCreate": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+          },
+          "retentionDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 36500,
+            "default": 30
+          },
+          "captureContent": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "slug"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectPatch": {
+        "type": "object",
+        "properties": {
+          "retentionDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 36500,
+            "default": 30
+          },
+          "captureContent": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "minProperties": 1
+      },
+      "Keep": {
+        "type": "object",
+        "properties": {
+          "traceIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            "maxItems": 200
+          },
+          "sessionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            "maxItems": 200
+          },
+          "keep": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "keep"
+        ],
+        "additionalProperties": false
+      },
+      "CoveredTotal": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "description": "Exact decimal value. Token counts are whole tokens."
+          },
+          "knownCalls": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "value",
+          "knownCalls"
+        ]
+      },
+      "Entity": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "kept": {
+            "type": "boolean"
+          },
+          "protectedBySession": {
+            "type": "boolean"
+          },
+          "sessionConflict": {
+            "type": "boolean"
+          },
+          "lastActivity": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC 3339 UTC timestamp. Absent when unknown."
+          },
+          "lastAccepted": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC 3339 UTC timestamp. Absent when unknown."
+          },
+          "sweepEligibleAfter": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC 3339 UTC timestamp. Absent when unknown."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "STATUS_CODE_UNSET",
+              "STATUS_CODE_OK",
+              "STATUS_CODE_ERROR"
+            ]
+          },
+          "application": {
+            "type": "string"
+          },
+          "spans": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "modelCalls": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tokens": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CoveredTotal"
+            }
+          },
+          "reportedCost": {
+            "type": "object",
+            "description": "Reported decimal monetary totals grouped by ISO currency code.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CoveredTotal"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "kept",
+          "status",
+          "spans",
+          "modelCalls",
+          "tokens",
+          "reportedCost"
+        ]
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Reported token count. Null represents unknown and zero is an explicit observation."
+          },
+          "output": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Reported token count. Null represents unknown and zero is an explicit observation."
+          },
+          "cacheRead": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Reported token count. Null represents unknown and zero is an explicit observation."
+          },
+          "cacheWrite": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Reported token count. Null represents unknown and zero is an explicit observation."
+          },
+          "reasoning": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Reported token count. Null represents unknown and zero is an explicit observation."
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Reported token count. Null represents unknown and zero is an explicit observation."
+          },
+          "amount": {
+            "type": "string",
+            "description": "Reported monetary amount as an exact decimal."
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO currency code. The proxy reports USD."
+          },
+          "provenance": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "input",
+          "output",
+          "cacheRead",
+          "cacheWrite",
+          "reasoning",
+          "total"
+        ]
+      },
+      "Message": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "data": {}
+        },
+        "required": [
+          "role",
+          "data"
+        ]
+      },
+      "TranscriptMessage": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Message"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "traceId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$"
+              },
+              "spanId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{16}$"
+              }
+            },
+            "required": [
+              "traceId",
+              "spanId"
+            ]
+          }
+        ]
+      },
+      "Event": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Nanoseconds since the Unix epoch encoded as a decimal string. Zero denotes an absent producer time for start and end."
+          },
+          "attributes": {
+            "type": "object",
+            "description": "Original typed OTLP values represented as JSON. Integers may exceed the JavaScript safe integer range. Whole-valued OTLP doubles use a fractional part. Binary attributes are omitted.",
+            "additionalProperties": true
+          },
+          "droppedAttributes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "name",
+          "time",
+          "attributes"
+        ]
+      },
+      "Link": {
+        "type": "object",
+        "properties": {
+          "traceId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "spanId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$"
+          },
+          "traceState": {
+            "type": "string"
+          },
+          "flags": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "attributes": {
+            "type": "object",
+            "description": "Original typed OTLP values represented as JSON. Integers may exceed the JavaScript safe integer range. Whole-valued OTLP doubles use a fractional part. Binary attributes are omitted.",
+            "additionalProperties": true
+          },
+          "droppedAttributes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "traceId",
+          "spanId",
+          "attributes"
+        ]
+      },
+      "Turn": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC 3339 UTC timestamp. Absent when unknown."
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Ordinal across explicit session turns."
+          }
+        },
+        "required": [
+          "id",
+          "number"
+        ]
+      },
+      "MetadataValue": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "boolean",
+              "integer",
+              "double",
+              "string",
+              "array",
+              "object"
+            ]
+          },
+          "value": {},
+          "json": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "value",
+          "json"
+        ]
+      },
+      "Span": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "requestModel": {
+            "type": "string"
+          },
+          "responseModel": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "application": {
+            "type": "string"
+          },
+          "proxyApplicationId": {
+            "type": "string"
+          },
+          "proxyRequestId": {
+            "type": "string"
+          },
+          "conversation": {
+            "type": "string"
+          },
+          "producerTurnId": {
+            "type": "string"
+          },
+          "scopeName": {
+            "type": "string"
+          },
+          "scopeVersion": {
+            "type": "string"
+          },
+          "resourceSchema": {
+            "type": "string"
+          },
+          "scopeSchema": {
+            "type": "string"
+          },
+          "traceState": {
+            "type": "string"
+          },
+          "statusMessage": {
+            "type": "string"
+          },
+          "flags": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "droppedAttributes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "droppedEvents": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "droppedLinks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "droppedResourceAttributes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "droppedScopeAttributes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "traceId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$"
+          },
+          "parentId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "STATUS_CODE_UNSET",
+              "STATUS_CODE_OK",
+              "STATUS_CODE_ERROR"
+            ]
+          },
+          "start": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Nanoseconds since the Unix epoch encoded as a decimal string. Zero denotes an absent producer time for start and end."
+          },
+          "end": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Nanoseconds since the Unix epoch encoded as a decimal string. Zero denotes an absent producer time for start and end."
+          },
+          "received": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Nanoseconds since the Unix epoch encoded as a decimal string. Zero denotes an absent producer time for start and end."
+          },
+          "observedSessionIds": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "modelCall": {
+            "type": "boolean"
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "attributes": {
+            "type": "object",
+            "description": "Original typed OTLP values represented as JSON. Integers may exceed the JavaScript safe integer range. Whole-valued OTLP doubles use a fractional part. Binary attributes are omitted.",
+            "additionalProperties": true
+          },
+          "resource": {
+            "type": "object",
+            "description": "Original typed OTLP values represented as JSON. Integers may exceed the JavaScript safe integer range. Whole-valued OTLP doubles use a fractional part. Binary attributes are omitted.",
+            "additionalProperties": true
+          },
+          "scopeAttributes": {
+            "type": "object",
+            "description": "Original typed OTLP values represented as JSON. Integers may exceed the JavaScript safe integer range. Whole-valued OTLP doubles use a fractional part. Binary attributes are omitted.",
+            "additionalProperties": true
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Event"
+            }
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Link"
+            }
+          },
+          "input": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "output": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "instructions": {},
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "traceId",
+          "source",
+          "name",
+          "kind",
+          "status",
+          "start",
+          "end",
+          "received",
+          "attributes",
+          "resource",
+          "scopeAttributes",
+          "usage",
+          "modelCall",
+          "partial",
+          "truncated"
+        ]
+      },
+      "SpanRow": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Nanoseconds since the Unix epoch encoded as a decimal string. Zero denotes an absent producer time for start and end."
+          },
+          "trace": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$"
+          },
+          "sessionId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "turnId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "linkedModel": {
+            "type": "boolean"
+          },
+          "background": {
+            "type": "boolean"
+          },
+          "usageFallbackSpanId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$"
+          },
+          "conflictingExports": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "data": {
+            "$ref": "#/components/schemas/Span"
+          }
+        },
+        "required": [
+          "time",
+          "trace",
+          "id",
+          "data"
+        ]
+      },
+      "EntityPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Entity"
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "SpanPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpanRow"
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "TurnPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Turn"
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "TimelinePage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpanRow"
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "transcript": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TranscriptMessage"
+            }
+          }
+        },
+        "required": [
+          "items",
+          "transcript"
+        ]
+      },
+      "Export": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "const": 1
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "traces",
+              "sessions"
+            ]
+          },
+          "summary": {
+            "$ref": "#/components/schemas/Entity"
+          },
+          "spans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpanRow"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "project",
+          "kind",
+          "summary",
+          "spans"
+        ]
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Login or read credential required.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Owner authorization or allowed origin required.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Entity unavailable in the authorized project.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "DatabaseError": {
+        "description": "Query or storage operation failed.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "projectRead": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Project-scoped, read-only integration token."
+      },
+      "ingestCredential": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Ingest token bound to one project and source."
+      },
+      "ownerSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-tracer",
+        "description": "Secure owner session established via OIDC. Mutating requests require Origin to match the configured public origin."
+      }
+    }
+  }
+}

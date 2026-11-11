@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light dark;
+  }
+
+  *, ::before, ::after {
+    @apply dark:border-gray-700;
+  }
+
+  body {
+    @apply bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 antialiased;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500 dark:focus:ring-indigo-400;
+  }
+  .btn-secondary {
+    @apply btn bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-900 focus:ring-indigo-500 dark:focus:ring-indigo-400;
+  }
+  .card {
+    @apply bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm;
+  }
+  .input {
+    @apply bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400;
+    @apply block w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:ring-indigo-400;
+  }
+}
+
+@layer components {
+  .link {
+    @apply text-indigo-700 dark:text-indigo-300 hover:underline focus-visible:underline;
+  }
+  .table-head {
+    @apply border-b bg-gray-50 dark:bg-gray-900 text-left text-xs font-medium text-gray-600 dark:text-gray-300;
+  }
+  .cell {
+    @apply px-4 py-3 align-top;
+  }
+  .field {
+    @apply text-xs font-medium text-gray-600 dark:text-gray-300;
+  }
+  .payload {
+    @apply whitespace-pre-wrap break-words overflow-auto rounded-md bg-gray-50 dark:bg-gray-900 p-3 text-xs;
+  }
+}
