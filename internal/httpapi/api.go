@@ -379,10 +379,21 @@ func (a *API) spans(kind string, turnDetail bool) http.HandlerFunc {
 			storeError(w, sql.ErrNoRows)
 			return
 		}
-		page := query.Page[storage.SpanRow]{Items: rows}
+		page := struct {
+			query.Page[storage.SpanRow]
+			Parents    []storage.SpanRow          `json:"parents,omitempty"`
+			Transcript *[]query.TranscriptMessage `json:"transcript,omitempty"`
+		}{Page: query.Page[storage.SpanRow]{Items: rows}}
 		if len(rows) > limit {
 			page.Items = rows[:limit]
 			page.Next = query.Cursor(rows[limit-1].Position)
+		}
+		if r.URL.Query().Get("includeParents") == "true" {
+			page.Parents, err = a.Store.SpanParents(r.Context(), p.ID, page.Items)
+			if err != nil {
+				storeError(w, err)
+				return
+			}
 		}
 		if kind == "traces" {
 			respond(w, 200, page)
@@ -410,10 +421,8 @@ func (a *API) spans(kind string, turnDetail bool) http.HandlerFunc {
 				return
 			}
 		}
-		respond(w, 200, struct {
-			query.Page[storage.SpanRow]
-			Transcript []query.TranscriptMessage `json:"transcript"`
-		}{page, transcript.Messages})
+		page.Transcript = &transcript.Messages
+		respond(w, 200, page)
 	}
 }
 

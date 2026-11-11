@@ -25,6 +25,7 @@ const detail = ref(null)
 const originalPage = ref({ items: [] })
 const focusedPage = ref(null)
 const page = computed(() => focusedPage.value || originalPage.value)
+const activityRows = computed(() => [...page.value.items, ...(page.value.parents || [])])
 const turns = ref({ items: [] })
 const error = ref('')
 const loading = ref(false)
@@ -39,7 +40,7 @@ const selectedKey = computed(() => {
   const value = route.params.span ? spanKey(route.params.id, route.params.span) : route.query.span
   return typeof value === 'string' && /^[0-9a-f]{32}\.[0-9a-f]{16}$/.test(value) ? value : ''
 })
-const selectedInTimeline = computed(() => page.value.items.find(row => rowKey(row) === selectedKey.value))
+const selectedInTimeline = computed(() => activityRows.value.find(row => rowKey(row) === selectedKey.value))
 const selected = computed(() => selectedInTimeline.value ||
   (outside.value && rowKey(outside.value) === selectedKey.value ? outside.value : null))
 const traceUrl = (trace, span) => ({
@@ -75,10 +76,12 @@ watch([timelinePath, cursor, turnCursor], async ([timeline, after, afterTurn], _
   focusedPage.value = null
   const path = entityPath.value
   const get = url => request(url, { signal: abort.signal })
+  const params = new URLSearchParams({ includeParents: 'true' })
+  if (after) params.set('cursor', after)
   try {
     const [summary, result, turnList] = await Promise.all([
       get(path),
-      get(timeline + (after ? '?cursor=' + encodeURIComponent(after) : '')),
+      get(timeline + '?' + params),
       !isTrace.value && !isTurn.value ? get(path + '/turns' + (afterTurn ? '?cursor=' + encodeURIComponent(afterTurn) : '')) : null,
     ])
     if (abort.signal.aborted) return
@@ -105,7 +108,8 @@ watch([selectedKey, loading], async ([key, waiting], _, cleanup) => {
   const apiBase = project.value
   try {
     try {
-      const window = await request(timeline + '?focus=' + encodeURIComponent(key), { signal: abort.signal })
+      const params = new URLSearchParams({ focus: key, includeParents: 'true' })
+      const window = await request(timeline + '?' + params, { signal: abort.signal })
       if (abort.signal.aborted) return
       focusedPage.value = window
     } catch (e) {
@@ -175,7 +179,7 @@ async function keep() {
 
 
     <div class="detail-layout" :class="{ 'trace-layout': isTrace, 'has-inspector': selectedKey || isTrace }">
-      <SpanTimeline :rows="page.items" :trace="isTrace" :selected-key="selectedKey" :span-location="spanLocation">
+      <SpanTimeline :rows="activityRows" :trace="isTrace" :selected-key="selectedKey" :span-location="spanLocation">
         <template v-if="turns.items.length" #turns>
           <details class="border-b border-gray-200 px-4 py-2 text-sm dark:border-gray-700">
             <summary class="cursor-pointer font-medium">Turns</summary>

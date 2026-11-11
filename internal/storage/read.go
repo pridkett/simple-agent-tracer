@@ -34,6 +34,7 @@ type Entry struct {
 
 type SpanRow struct {
 	Position
+	Parent      string          `json:"-"`
 	Session     string          `json:"sessionId,omitempty"`
 	Turn        string          `json:"turnId,omitempty"`
 	Conflicts   int64           `json:"conflictingExports,omitempty"`
@@ -184,6 +185,32 @@ func (s *Store) Entry(ctx context.Context, project, kind, id string) (Entry, err
 const visibleTurn = `(m.turn_from_proxy=FALSE OR EXISTS(
  SELECT 1 FROM session_aliases va WHERE va.project=m.project AND va.proxy_session=m.session_id))`
 
+const spanRowSelect = `SELECT m.sort_time,m.trace,m.id,m.parent,COALESCE(m.session_id,''),CASE WHEN ` + visibleTurn + ` THEN m.turn_id ELSE '' END,m.conflicts,m.linked_model,m.background,m.usage_client,m.payload FROM spans m WHERE m.project=?`
+
+// SpanParents returns stored direct parents outside the window, within the same project and trace.
+func (s *Store) SpanParents(ctx context.Context, project string, window []SpanRow) ([]SpanRow, error) {
+	type key struct{ trace, span string }
+	seen := make(map[key]bool, len(window))
+	for _, row := range window {
+		seen[key{row.Trace, row.ID}] = true
+	}
+	var pairs []string
+	args := []any{project}
+	for _, row := range window {
+		parent := key{row.Trace, row.Parent}
+		if parent.span != "" && !seen[parent] {
+			seen[parent] = true
+			pairs = append(pairs, "(?,?)")
+			args = append(args, parent.trace, parent.span)
+		}
+	}
+	if len(pairs) == 0 {
+		return nil, nil
+	}
+	q := spanRowSelect + " AND (m.trace,m.id) IN (VALUES " + strings.Join(pairs, ",") + ")"
+	return s.readSpanRows(ctx, q, args)
+}
+
 func (s *Store) SpanRows(ctx context.Context, project, kind, id, turn, span string, after *Position, limit int) ([]SpanRow, error) {
 	return s.spanRows(ctx, project, kind, id, turn, spanSelection{span: span, cursor: after, limit: limit})
 }
@@ -226,7 +253,7 @@ type spanSelection struct {
 }
 
 func (s *Store) spanRows(ctx context.Context, project, kind, id, turn string, selection spanSelection) ([]SpanRow, error) {
-	q := `SELECT m.sort_time,m.trace,m.id,COALESCE(m.session_id,''),CASE WHEN ` + visibleTurn + ` THEN m.turn_id ELSE '' END,m.conflicts,m.linked_model,m.background,m.usage_client,m.payload FROM spans m WHERE m.project=?`
+	q := spanRowSelect
 	args := []any{project, id}
 	if kind == "traces" {
 		q += " AND m.trace=?"
@@ -259,6 +286,10 @@ func (s *Store) spanRows(ctx context.Context, project, kind, id, turn string, se
 	}
 	q += " ORDER BY m.sort_time " + order + ",m.trace " + order + ",m.id " + order + " LIMIT ?"
 	args = append(args, selection.limit)
+	return s.readSpanRows(ctx, q, args)
+}
+
+func (s *Store) readSpanRows(ctx context.Context, q string, args []any) ([]SpanRow, error) {
 	rows, err := s.db.QueryContext(ctx, s.bind(q), args...)
 	if err != nil {
 		return nil, err
@@ -268,7 +299,7 @@ func (s *Store) spanRows(ctx context.Context, project, kind, id, turn string, se
 	for rows.Next() {
 		var r SpanRow
 		var raw string
-		if err := rows.Scan(&r.Time, &r.Trace, &r.ID, &r.Session, &r.Turn, &r.Conflicts, &r.Linked, &r.Background, &r.UsageClient, &raw); err != nil {
+		if err := rows.Scan(&r.Time, &r.Trace, &r.ID, &r.Parent, &r.Session, &r.Turn, &r.Conflicts, &r.Linked, &r.Background, &r.UsageClient, &raw); err != nil {
 			return nil, err
 		}
 		r.Data = json.RawMessage(raw)

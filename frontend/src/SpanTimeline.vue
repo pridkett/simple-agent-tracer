@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { elapsed, statusLabel } from './api'
+import SpanIcon from './SpanIcon.vue'
 
 const props = defineProps({
   rows: { type: Array, required: true },
@@ -21,23 +22,30 @@ const extent = computed(() => {
   return { first, last }
 })
 
+const keyOf = span => span.traceId + '.' + span.id
 const rows = computed(() => {
-  const spans = props.rows.map(row => row.data)
-  if (!props.trace) return spans.map(span => ({ span, depth: 0 }))
-  const ids = new Set(spans.map(span => span.id))
+  const spans = props.rows.slice().sort((a, b) => {
+    const first = BigInt(a.time)
+    const second = BigInt(b.time)
+    if (first !== second) return first < second ? -1 : 1
+    return keyOf(a.data).localeCompare(keyOf(b.data))
+  }).map(row => row.data)
+  const ids = new Set(spans.map(keyOf))
   const children = new Map()
   for (const span of spans) {
-    const parent = ids.has(span.parentId) ? span.parentId : ''
+    const parentKey = span.traceId + '.' + span.parentId
+    const parent = ids.has(parentKey) ? parentKey : ''
     if (!children.has(parent)) children.set(parent, [])
     children.get(parent).push(span)
   }
   const ordered = []
   const seen = new Set()
   function visit(span, depth) {
-    if (seen.has(span.id)) return
-    seen.add(span.id)
+    const key = keyOf(span)
+    if (seen.has(key)) return
+    seen.add(key)
     ordered.push({ span, depth })
-    for (const child of children.get(span.id) || []) visit(child, depth + 1)
+    for (const child of children.get(key) || []) visit(child, depth + 1)
   }
   for (const span of children.get('') || []) visit(span, 0)
   for (const span of spans) visit(span, 0)
@@ -53,7 +61,6 @@ function waterfall(span) {
   return { left: percent(start - first) + '%', width: Math.max(1, percent(end - start)) + '%' }
 }
 
-const keyOf = span => span.traceId + '.' + span.id
 </script>
 
 <template>
@@ -63,14 +70,17 @@ const keyOf = span => span.traceId + '.' + span.id
     <div class="activity-list overflow-auto">
       <p v-if="!rows.length" class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">No spans in this window.</p>
       <ul v-else class="divide-y divide-gray-100 dark:divide-gray-700">
-        <li v-for="{ span, depth } in rows" :id="'timeline-' + keyOf(span)" :key="keyOf(span)" class="scroll-my-1">
+        <li v-for="{ span, depth } in rows" :id="'timeline-' + keyOf(span)" :key="keyOf(span)" :aria-level="depth + 1" class="scroll-my-1">
           <RouterLink :to="spanLocation(span.traceId, span.id)"
             class="block border-l-2 px-3 py-2.5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-500"
             :class="keyOf(span) === selectedKey ? 'border-indigo-600 bg-indigo-50 dark:border-indigo-400 dark:bg-indigo-950/60' : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-900/60'"
             :aria-current="keyOf(span) === selectedKey ? 'true' : undefined"
-            :style="{ paddingLeft: 12 + Math.min(depth, 5) * 10 + 'px' }">
-            <span class="block truncate text-sm font-medium" :title="span.name || span.id">{{ span.name || span.id }}</span>
-            <span class="mt-0.5 flex flex-wrap gap-x-2 text-xs text-gray-600 dark:text-gray-300">
+            :style="{ paddingLeft: 12 + Math.min(depth, 5) * 14 + 'px' }">
+            <span class="flex items-center gap-2">
+              <SpanIcon :span="span" />
+              <span class="truncate text-sm font-medium" :title="span.name || span.id">{{ span.name || span.id }}</span>
+            </span>
+            <span class="mt-0.5 flex flex-wrap gap-x-2 pl-6 text-xs text-gray-600 dark:text-gray-300">
               <span>{{ elapsed(span.start, span.end) }}</span>
               <span :class="{ 'text-red-700 dark:text-red-300': span.status === 'STATUS_CODE_ERROR' }">{{ statusLabel(span.status) }}</span>
               <span v-if="span.partial || span.truncated" class="text-amber-700 dark:text-amber-300">Partial capture</span>
