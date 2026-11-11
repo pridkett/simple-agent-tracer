@@ -46,7 +46,7 @@ Send tokens as `Authorization: Bearer TOKEN`. Use separate ingest credentials fo
 
 For browser access through a TLS reverse proxy, set `TRACER_AUTH_MODE=authenticated` and configure `TRACER_OIDC_ISSUER`, `TRACER_OIDC_CLIENT_ID`, `TRACER_OIDC_CLIENT_SECRET`, and `TRACER_OIDC_CALLBACK`. Register the public HTTPS callback, for example `https://tracer.example.com/auth/callback`. Configure the provider to include group names in the ID token. The tracer requests the `openid email profile groups` scopes. Members of the configured administrator group can access every tracer project. The callback origin must match browser writes. Login sessions are kept in memory and expire on restart. The listener serves HTTP behind the TLS proxy.
 
-To migrate an existing `TRACER_OIDC_OWNER_SUBJECT` deployment, set `TRACER_OIDC_ADMIN_GROUP` to the group that should have access, then remove `TRACER_OIDC_OWNER_SUBJECT`. A deployment that supplies only the old setting retains its single-user access.
+Signed-out visitors see the login screen before the explorer opens. To migrate an existing `TRACER_OIDC_OWNER_SUBJECT` deployment, set `TRACER_OIDC_ADMIN_GROUP` to the group that should have access, then remove `TRACER_OIDC_OWNER_SUBJECT`. A deployment that supplies only the old setting retains its single-user access.
 
 ### Container
 

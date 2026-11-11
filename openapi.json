@@ -1596,7 +1596,7 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Whether OIDC is configured and this browser has an administrator session.",
+            "description": "Whether OIDC is configured, this browser has an administrator session, or the request qualifies for local administrator access.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1607,11 +1607,15 @@
                     },
                     "signedIn": {
                       "type": "boolean"
+                    },
+                    "local": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
                     "oidc",
-                    "signedIn"
+                    "signedIn",
+                    "local"
                   ]
                 }
               }

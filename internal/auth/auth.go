@@ -193,6 +193,7 @@ func (a *Access) Status(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]bool{
 		"oidc":     a.session != nil,
 		"signedIn": a.session != nil && a.session.GetBool(r.Context(), "owner"),
+		"local":    a.localRequest(r),
 	})
 }
 

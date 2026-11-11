@@ -1,12 +1,13 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { request } from './api'
+import { canBrowse, session } from './session'
 
 const route = useRoute()
 const router = useRouter()
 const projects = ref([])
-const auth = ref({ oidc: false, signedIn: false })
+const logoutError = ref('')
 const project = computed(() => route.params.project || projects.value[0]?.slug || 'default')
 const base = computed(() => '/projects/' + encodeURIComponent(project.value))
 
@@ -15,17 +16,28 @@ async function refresh() {
     projects.value = await request('/api/v1/projects')
   } catch { projects.value = [] }
 }
-refresh()
-request('/auth/status').then(result => { auth.value = result }).catch(() => {})
+watch(canBrowse, allowed => {
+  if (allowed) refresh()
+  else projects.value = []
+}, { immediate: true })
 
 async function signOut() {
-  await request('/auth/logout', { method: 'POST' })
+  logoutError.value = ''
+  try {
+    await request('/auth/logout', { method: 'POST' })
+  } catch (error) {
+    if (error.status !== 403) {
+      logoutError.value = 'Unable to sign out. Try again.'
+      return
+    }
+  }
   window.location.assign('/')
 }
 </script>
 
 <template>
-  <div class="min-h-screen">
+  <RouterView v-if="route.name === 'login'" />
+  <div v-else-if="canBrowse" class="min-h-screen">
     <header class="border-b border-gray-200 bg-white dark:bg-gray-800">
       <div class="mx-auto flex max-w-screen-2xl flex-wrap items-center gap-x-6 gap-y-3 px-5 py-4">
         <RouterLink :to="base + '/sessions'" class="font-semibold tracking-tight">Simple Agent Tracer</RouterLink>
@@ -40,11 +52,11 @@ async function signOut() {
             <option v-for="p in projects" :key="p.id" :value="p.slug">{{ p.slug }}</option>
           </select>
         </label>
-        <a v-if="auth.oidc && !auth.signedIn" href="/auth/login" class="btn-primary ml-auto">Sign in</a>
-        <button v-if="auth.signedIn" class="btn-secondary" @click="signOut">Sign out</button>
+        <button v-if="session?.signedIn" class="btn-secondary" @click="signOut">Sign out</button>
       </div>
     </header>
     <main class="mx-auto max-w-screen-2xl px-5 py-7">
+      <p v-if="logoutError" role="alert" class="mb-4 text-sm text-red-700 dark:text-red-300">{{ logoutError }}</p>
       <RouterView v-slot="{ Component }">
         <component :is="Component" @projects-changed="refresh" />
       </RouterView>
