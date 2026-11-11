@@ -15,6 +15,8 @@ CGO_ENABLED=0 go build -trimpath -tags frontend -ldflags="-s -w" -o tracer ./cmd
 
 Open [the local explorer](http://127.0.0.1:4318). The default listener is `127.0.0.1:4318` and the default database is `tracer.db`. The `default` project starts with 30 days of retention and content capture enabled. A local request without an ingest credential writes to the `default` project and the `local` source. Supply an ingest credential to give each producer a distinct namespace.
 
+With `TRACER_OIDC_ISSUER` unset, the browser opens as a local administrator without signing in. Set `TRACER_AUTH_MODE=local` to select this mode explicitly. Local mode requires a loopback IP bind and accepts browser requests from a loopback peer with a loopback Host and a matching Origin when present. Keep the unauthenticated listener on your machine.
+
 `GET /health` checks the process. `GET /ready` checks database connectivity. `GET /openapi.json` describes the query API, timestamp and token encodings, pagination, and the versioned JSON export format. The explorer supports the same filters as the API and keeps filters in the URL. For example, `?tool=search&status=STATUS_CODE_ERROR` finds sessions with a failed `search` span. A typed metadata exact match uses a JSON literal in `metadataValue`. Use `1.0` to match a double and `1` to match an integer.
 
 ## Configure deployment
@@ -24,8 +26,9 @@ Open [the local explorer](http://127.0.0.1:4318). The default listener is `127.0
 | `TRACER_BIND` or `-bind` | HTTP address. Defaults to `127.0.0.1:4318`. |
 | `TRACER_DATABASE_URL` or `-database` | SQLite path or `file:` URI, or a `postgres://` or `postgresql://` DSN. |
 | `TRACER_PROJECTS` | Comma-separated project slugs to provision at startup. Existing project settings take precedence. |
-| `TRACER_AUTH_MODE` | `auto` uses local access for loopback IP binds without OIDC. `authenticated` requires ingest credentials and either a read credential or OIDC on any bind. `local` requires a loopback IP bind. |
+| `TRACER_AUTH_MODE` | `auto` uses local access for loopback IP binds without OIDC. `authenticated` requires ingest credentials and either a read credential or OIDC on any bind. `local` requires a loopback IP bind and an unset OIDC issuer. |
 | `TRACER_CREDENTIALS` | JSON array of bearer credentials. Each token needs at least 24 characters. Give each ingest token a project and source. Give each read token a project. |
+| `TRACER_OIDC_ADMIN_GROUP` | Exact group name from the verified OIDC ID token. Defaults to `admin`, matching the proxy. |
 
 For PostgreSQL, give the database role permission to create the schema objects. Startup applies versioned migrations. The tracer uses at most 10 connections per process. Use a TLS DSN such as `sslmode=verify-full` for network deployments. Changing the DSN starts the tracer against the selected database. SQLite files and PostgreSQL databases are independent.
 
@@ -39,9 +42,11 @@ Replace the three placeholders in this credential configuration with separate ra
 ]
 ```
 
-Send tokens as `Authorization: Bearer TOKEN`. Use separate ingest credentials for the proxy, Pi, and OpenCode in the same project. Read credentials can query and export data for their project. Project changes and Keep require local access or the OIDC owner session. Exported user IDs are attribution.
+Send tokens as `Authorization: Bearer TOKEN`. Use separate ingest credentials for the proxy, Pi, and OpenCode in the same project. Read credentials can query and export data for their project. Project changes and Keep require local administrator access or an OIDC administrator session. Exported user IDs are attribution.
 
-For browser access through a TLS reverse proxy, set `TRACER_AUTH_MODE=authenticated` and configure `TRACER_OIDC_ISSUER`, `TRACER_OIDC_CLIENT_ID`, `TRACER_OIDC_CLIENT_SECRET`, `TRACER_OIDC_OWNER_SUBJECT`, and `TRACER_OIDC_CALLBACK`. Register the public HTTPS callback, for example `https://tracer.example.com/auth/callback`. The verified issuer and subject identify the owner. The callback origin must match browser writes. Login sessions are kept in memory and expire on restart. The listener serves HTTP behind the TLS proxy.
+For browser access through a TLS reverse proxy, set `TRACER_AUTH_MODE=authenticated` and configure `TRACER_OIDC_ISSUER`, `TRACER_OIDC_CLIENT_ID`, `TRACER_OIDC_CLIENT_SECRET`, and `TRACER_OIDC_CALLBACK`. Register the public HTTPS callback, for example `https://tracer.example.com/auth/callback`. Configure the provider to include group names in the ID token. The tracer requests the `openid email profile groups` scopes. Members of the configured administrator group can access every tracer project. The callback origin must match browser writes. Login sessions are kept in memory and expire on restart. The listener serves HTTP behind the TLS proxy.
+
+To migrate an existing `TRACER_OIDC_OWNER_SUBJECT` deployment, set `TRACER_OIDC_ADMIN_GROUP` to the group that should have access, then remove `TRACER_OIDC_OWNER_SUBJECT`. A deployment that supplies only the old setting retains its single-user access.
 
 ### Container
 
@@ -79,6 +84,6 @@ go test -race ./...
 TRACER_TEST_POSTGRES='postgres://USER:PASSWORD@127.0.0.1:5432/DB?sslmode=disable' go test -race ./...
 ```
 
-The parity test creates and drops an isolated PostgreSQL schema in the test database. It covers migrations, child-first ingestion, replay, parallel writes, typed child-span filters, capture controls, project credentials, pagination, export, and retention. A TLS fixture exercises OIDC owner sign-in, PKCE, state, nonce, and origin enforcement.
+The parity test creates and drops an isolated PostgreSQL schema in the test database. It covers migrations, child-first ingestion, replay, parallel writes, typed child-span filters, capture controls, project credentials, pagination, export, and retention. A TLS fixture exercises OIDC group-based sign-in, PKCE, state, nonce, and origin enforcement.
 
 See [the benchmark](scripts/benchmark/README.md) for the 100,000-span fixture, commands, and results.

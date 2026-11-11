@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,21 +34,27 @@ type credential struct {
 }
 
 type OIDCConfig struct {
-	Issuer, Client, Secret, Callback, Subject string
+	Issuer, Client, Secret, Callback, AdminGroup string
+	LegacyOwnerSubject                           string
 }
 
 type Access struct {
-	local           bool
-	credentials     []credential
-	session         *scs.SessionManager
-	provider        *oidc.IDTokenVerifier
-	oauth           *oauth2.Config
-	subject, origin string
+	local         bool
+	credentials   []credential
+	session       *scs.SessionManager
+	provider      *oidc.IDTokenVerifier
+	oauth         *oauth2.Config
+	adminGroup    string
+	legacySubject string
+	origin        string
 }
 
 var namespace = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
 
 func New(ctx context.Context, local bool, raw string, config OIDCConfig) (*Access, []Credential, error) {
+	if local && config.Issuer != "" {
+		return nil, nil, errors.New("local mode cannot be used with OIDC")
+	}
 	a := &Access{local: local}
 	var credentials []Credential
 	if raw != "" && json.Unmarshal([]byte(raw), &credentials) != nil {
@@ -73,8 +80,8 @@ func New(ctx context.Context, local bool, raw string, config OIDCConfig) (*Acces
 	if config.Issuer != "" {
 		redirect, err := url.Parse(config.Callback)
 		if err != nil || redirect.Scheme != "https" || redirect.Host == "" || redirect.User != nil || redirect.Path != "/auth/callback" ||
-			redirect.RawQuery != "" || redirect.Fragment != "" || config.Client == "" || config.Subject == "" {
-			return nil, nil, errors.New("OIDC requires a client, owner subject and HTTPS /auth/callback URL")
+			redirect.RawQuery != "" || redirect.Fragment != "" || config.Client == "" {
+			return nil, nil, errors.New("OIDC requires a client and HTTPS /auth/callback URL")
 		}
 		issuer, err := url.Parse(config.Issuer)
 		if err != nil || issuer.Scheme != "https" || issuer.Host == "" || issuer.User != nil {
@@ -85,8 +92,16 @@ func New(ctx context.Context, local bool, raw string, config OIDCConfig) (*Acces
 			return nil, nil, errors.New("OIDC discovery failed")
 		}
 		a.provider = provider.Verifier(&oidc.Config{ClientID: config.Client})
-		a.oauth = &oauth2.Config{ClientID: config.Client, ClientSecret: config.Secret, RedirectURL: config.Callback, Endpoint: provider.Endpoint(), Scopes: []string{oidc.ScopeOpenID}}
-		a.subject = config.Subject
+		a.oauth = &oauth2.Config{
+			ClientID: config.Client, ClientSecret: config.Secret, RedirectURL: config.Callback,
+			Endpoint: provider.Endpoint(), Scopes: []string{oidc.ScopeOpenID, "email", "profile", "groups"},
+		}
+		a.adminGroup = config.AdminGroup
+		if a.adminGroup == "" {
+			a.adminGroup = "admin"
+			// Keep an existing subject-only deployment restricted until its administrator opts into group access.
+			a.legacySubject = config.LegacyOwnerSubject
+		}
 		a.origin = redirect.Scheme + "://" + redirect.Host
 		a.session = scs.New()
 		a.session.Cookie.Name = "__Host-tracer"
@@ -130,21 +145,16 @@ func (a *Access) Query(r *http.Request, mutate bool) (string, bool) {
 		c, ok := a.token(r, "read")
 		return c.project, ok && !mutate
 	}
-	if !mutate {
-		return "", a.localRequest(r) || (a.session != nil && a.session.GetBool(r.Context(), "owner"))
+	if a.local {
+		return "", a.localRequest(r)
 	}
-	origin := r.Header.Get("Origin")
-	if origin != "" && !a.validOrigin(r, origin) {
-		return "", false
-	}
-	if a.localRequest(r) {
-		return "", r.Header.Get("Sec-Fetch-Site") != "cross-site"
-	}
-	return "", origin == a.origin && a.session != nil && a.session.GetBool(r.Context(), "owner")
+	return "", a.session != nil && a.session.GetBool(r.Context(), "owner") &&
+		(!mutate || r.Header.Get("Origin") == a.origin)
 }
 
 func (a *Access) localRequest(r *http.Request) bool {
-	if !a.local {
+	peer, err := netip.ParseAddrPort(r.RemoteAddr)
+	if !a.local || err != nil || !peer.Addr().Unmap().IsLoopback() || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 		return false
 	}
 	host := r.Host
@@ -153,15 +163,15 @@ func (a *Access) localRequest(r *http.Request) bool {
 	}
 	host = strings.Trim(host, "[]")
 	ip, _ := netip.ParseAddr(host)
-	return ip.IsLoopback() || strings.EqualFold(host, "localhost")
-}
-
-func (a *Access) validOrigin(r *http.Request, origin string) bool {
-	if a.origin != "" && origin == a.origin {
-		return true
+	if !ip.Unmap().IsLoopback() && !strings.EqualFold(host, "localhost") {
+		return false
 	}
-	parsed, err := url.Parse(origin)
-	return a.local && err == nil && parsed.Host == r.Host && (parsed.Scheme == "http" || parsed.Scheme == "https")
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	origin := r.Header.Get("Origin")
+	return origin == "" || strings.EqualFold(origin, scheme+"://"+r.Host)
 }
 
 func (a *Access) Middleware(next http.Handler) http.Handler {
@@ -218,8 +228,28 @@ func (a *Access) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, _ := token.Extra("id_token").(string)
 	id, err := a.provider.Verify(ctx, raw)
-	if err != nil || id.Subject != a.subject || id.Nonce != nonce {
-		http.Error(w, "owner login required", http.StatusForbidden)
+	if err != nil || id.Subject == "" || id.Nonce != nonce {
+		http.Error(w, "invalid ID token", http.StatusForbidden)
+		return
+	}
+	var claims struct {
+		Groups        []string `json:"groups"`
+		EmailVerified *bool    `json:"email_verified"`
+	}
+	if err = id.Claims(&claims); err != nil {
+		http.Error(w, "invalid ID token claims", http.StatusForbidden)
+		return
+	}
+	if claims.EmailVerified != nil && !*claims.EmailVerified {
+		http.Error(w, "email not verified", http.StatusForbidden)
+		return
+	}
+	authorized := slices.Contains(claims.Groups, a.adminGroup)
+	if a.legacySubject != "" {
+		authorized = id.Subject == a.legacySubject
+	}
+	if !authorized {
+		http.Error(w, "administrator login required", http.StatusForbidden)
 		return
 	}
 	if err = a.session.RenewToken(ctx); err != nil {

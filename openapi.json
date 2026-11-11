@@ -3,7 +3,7 @@
   "info": {
     "title": "Simple Agent Tracer",
     "version": "0.1.0",
-    "description": "Local mode permits unauthenticated query, owner actions and default-project ingestion on a loopback listener. Authenticated deployments use project-scoped bearer credentials or an OIDC owner session. Owner writes use same-origin verification. Credentials carry either read or ingest access."
+    "description": "Local mode permits unauthenticated query, owner actions and default-project ingestion on a loopback listener. Authenticated deployments use project-scoped bearer credentials or an OIDC administrator session. Administrator writes use same-origin verification. Credentials carry either read or ingest access."
   },
   "paths": {
     "/health": {
@@ -1542,7 +1542,7 @@
     },
     "/auth/login": {
       "get": {
-        "summary": "Start owner OIDC login",
+        "summary": "Start administrator OIDC login",
         "security": [],
         "responses": {
           "303": {
@@ -1553,7 +1553,7 @@
     },
     "/auth/callback": {
       "get": {
-        "summary": "Complete owner OIDC login",
+        "summary": "Complete administrator OIDC login",
         "security": [],
         "responses": {
           "303": {
@@ -1596,7 +1596,7 @@
         "security": [],
         "responses": {
           "200": {
-            "description": "Whether OIDC is configured and this browser has an owner session.",
+            "description": "Whether OIDC is configured and this browser has an administrator session.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2444,7 +2444,7 @@
         }
       },
       "Forbidden": {
-        "description": "Owner authorization or allowed origin required.",
+        "description": "Administrator authorization or allowed origin required.",
         "content": {
           "application/json": {
             "schema": {
@@ -2489,7 +2489,7 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "__Host-tracer",
-        "description": "Secure owner session established via OIDC. Mutating requests require Origin to match the configured public origin."
+        "description": "Secure administrator session established via OIDC group membership. Mutating requests require Origin to match the configured public origin."
       }
     }
   }
