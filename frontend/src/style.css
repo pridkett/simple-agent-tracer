@@ -52,3 +52,53 @@
     @apply whitespace-pre-wrap break-words overflow-auto rounded-md bg-gray-50 dark:bg-gray-900 p-3 text-xs;
   }
 }
+
+.detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.activity-panel { grid-area: activity; }
+.conversation-panel { grid-area: conversation; }
+.span-inspector { grid-area: inspector; }
+.detail-layout { grid-template-areas: "activity" "conversation"; }
+.detail-layout.has-inspector { grid-template-areas: "activity" "inspector" "conversation"; }
+.detail-layout.trace-layout { grid-template-areas: "activity" "inspector"; }
+.activity-list { max-height: 42vh; }
+
+@media (min-width: 768px) {
+  .detail-layout {
+    grid-template-columns: minmax(13rem, 17rem) minmax(0, 1fr);
+    grid-template-areas: "activity conversation";
+  }
+  .detail-layout.has-inspector {
+    grid-template-areas: "activity inspector" "activity conversation";
+  }
+  .detail-layout.trace-layout {
+    grid-template-columns: minmax(15rem, 21rem) minmax(0, 1fr);
+    grid-template-areas: "activity inspector";
+  }
+  .activity-panel {
+    position: sticky;
+    top: 1rem;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 2rem);
+  }
+  .activity-list { max-height: none; }
+}
+
+@media (min-width: 1280px) {
+  .detail-layout.has-inspector:not(.trace-layout) {
+    grid-template-columns: minmax(14rem, 17rem) minmax(0, 1fr) minmax(23rem, 0.95fr);
+    grid-template-areas: "activity conversation inspector";
+  }
+  .span-inspector {
+    position: sticky;
+    top: 1rem;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 2rem);
+  }
+}
