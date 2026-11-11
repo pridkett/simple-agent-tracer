@@ -1048,15 +1048,6 @@
           },
           {
             "ownerSession": []
-          },
-          {
-            "name": "focus",
-            "in": "query",
-            "description": "Start in a window around the span identified by trace ID and span ID separated by a dot. Use without a cursor.",
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{32}[.][0-9a-f]{16}$"
-            }
           }
         ],
         "responses": {
@@ -1103,6 +1094,24 @@
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "focus",
+            "in": "query",
+            "description": "Start in a window around the span identified by trace ID and span ID separated by a dot. Use without a cursor.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}[.][0-9a-f]{16}$"
+            }
+          },
+          {
+            "name": "includeParents",
+            "in": "query",
+            "description": "Include stored direct parents outside the timeline window.",
+            "schema": {
+              "type": "boolean",
+              "default": false
             }
           }
         ]
@@ -1208,15 +1217,6 @@
           },
           {
             "ownerSession": []
-          },
-          {
-            "name": "focus",
-            "in": "query",
-            "description": "Start in a window around the span identified by trace ID and span ID separated by a dot. Use without a cursor.",
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{32}[.][0-9a-f]{16}$"
-            }
           }
         ],
         "responses": {
@@ -1263,6 +1263,24 @@
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "focus",
+            "in": "query",
+            "description": "Start in a window around the span identified by trace ID and span ID separated by a dot. Use without a cursor.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}[.][0-9a-f]{16}$"
+            }
+          },
+          {
+            "name": "includeParents",
+            "in": "query",
+            "description": "Include stored direct parents outside the timeline window.",
+            "schema": {
+              "type": "boolean",
+              "default": false
             }
           }
         ]
@@ -1391,15 +1409,6 @@
           },
           {
             "ownerSession": []
-          },
-          {
-            "name": "focus",
-            "in": "query",
-            "description": "Start in a window around the span identified by trace ID and span ID separated by a dot. Use without a cursor.",
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{32}[.][0-9a-f]{16}$"
-            }
           }
         ],
         "responses": {
@@ -1446,6 +1455,24 @@
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "focus",
+            "in": "query",
+            "description": "Start in a window around the span identified by trace ID and span ID separated by a dot. Use without a cursor.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}[.][0-9a-f]{16}$"
+            }
+          },
+          {
+            "name": "includeParents",
+            "in": "query",
+            "description": "Include stored direct parents outside the timeline window.",
+            "schema": {
+              "type": "boolean",
+              "default": false
             }
           }
         ]
@@ -2367,6 +2394,13 @@
               "$ref": "#/components/schemas/SpanRow"
             }
           },
+          "parents": {
+            "type": "array",
+            "description": "Stored direct parents outside the page. These spans do not count toward the page size or appear in the transcript.",
+            "items": {
+              "$ref": "#/components/schemas/SpanRow"
+            }
+          },
           "nextCursor": {
             "type": "string"
           }
@@ -2397,6 +2431,13 @@
         "properties": {
           "items": {
             "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpanRow"
+            }
+          },
+          "parents": {
+            "type": "array",
+            "description": "Stored direct parents outside the page. These spans do not count toward the page size or appear in the transcript.",
             "items": {
               "$ref": "#/components/schemas/SpanRow"
             }

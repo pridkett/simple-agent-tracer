@@ -311,9 +311,18 @@ func exercise(t *testing.T, f *fixture) string {
 	}
 	type spanPage struct {
 		Items      []storage.SpanRow
+		Parents    []storage.SpanRow
 		NextCursor string
 	}
 	traceWindow := root + "/traces/" + traceID + "/spans"
+	for _, path := range []string{traceWindow, root + "/sessions/" + oldID + "/timeline", root + "/sessions/" + oldID + "/turns/" + turnPage.Items[0].ID} {
+		call := path + "?limit=1&focus=" + traceID + "." + strings.Repeat("05", 8)
+		withParent := readJSON[spanPage](t, f.call("GET", call+"&includeParents=true", readerToken, "", 200))
+		if len(withParent.Items) != 1 || withParent.Items[0].ID != strings.Repeat("05", 8) ||
+			len(withParent.Parents) != 1 || withParent.Parents[0].Trace != traceID || withParent.Parents[0].ID != strings.Repeat("04", 8) {
+			t.Fatalf("missing request parent outside the timeline window: %+v", withParent)
+		}
+	}
 	focus := traceID + "." + strings.Repeat("03", 8)
 	focused := readJSON[spanPage](t, f.call("GET", traceWindow+"?limit=3&focus="+focus, "", "", 200))
 	if len(focused.Items) != 3 || focused.Items[1].ID != strings.Repeat("03", 8) || focused.NextCursor == "" {
