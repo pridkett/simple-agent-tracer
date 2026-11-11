@@ -45,6 +45,16 @@ func TestLocalBrowserAccess(t *testing.T) {
 			if res.Header().Get("Set-Cookie") != "" {
 				t.Fatal("local access set a session cookie")
 			}
+			statusReq := req.Clone(req.Context())
+			statusReq.Method = http.MethodGet
+			statusReq.URL.Path = "/auth/status"
+			statusRes := httptest.NewRecorder()
+			handler.ServeHTTP(statusRes, statusReq)
+			status := readJSON[map[string]bool](t, statusRes)
+			local := tc.want == http.StatusOK || tc.want == http.StatusCreated
+			if statusRes.Code != http.StatusOK || status["local"] != local || status["oidc"] || status["signedIn"] {
+				t.Fatalf("unexpected browser sign-in status: %s", statusRes.Body.String())
+			}
 		})
 	}
 }

@@ -117,6 +117,10 @@ func TestOIDCAdministrator(t *testing.T) {
 				return res
 			}
 			request("GET", "/api/v1/projects", "", nil, 401)
+			signedOut := readJSON[map[string]bool](t, request("GET", "/auth/status", "", nil, 200))
+			if !signedOut["oidc"] || signedOut["local"] || signedOut["signedIn"] {
+				t.Fatalf("unexpected signed-out status: %v", signedOut)
+			}
 			login := func(subject string, want int, validState bool) *httptest.ResponseRecorder {
 				res := request("GET", "/auth/login", "", nil, 303)
 				redirect, err := url.Parse(res.Header().Get("Location"))
@@ -158,6 +162,10 @@ func TestOIDCAdministrator(t *testing.T) {
 				t.Fatal("missing owner session cookie")
 			}
 			owner := cookies[0]
+			signedIn := readJSON[map[string]bool](t, request("GET", "/auth/status", "", owner, 200))
+			if !signedIn["oidc"] || signedIn["local"] || !signedIn["signedIn"] {
+				t.Fatalf("unexpected signed-in status: %v", signedIn)
+			}
 			request("GET", "/api/v1/projects", "", owner, 200)
 			request("POST", "/api/v1/projects", "https://other.example", owner, 403)
 			request("POST", "/api/v1/projects", "", owner, 403)
