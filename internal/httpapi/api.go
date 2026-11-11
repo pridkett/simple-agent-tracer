@@ -61,12 +61,17 @@ func New(store *storage.Store, access *auth.Access, ui fs.FS, openapi []byte) ht
 	r.Get("/auth/login", access.Login)
 	r.Get("/auth/callback", access.Callback)
 	r.Post("/auth/logout", access.Logout)
-	r.Post("/v1/traces", ingest.New(store, access.Ingest).ServeHTTP)
+	r.Post("/v1/traces", ingest.New(store, func(r *http.Request) (ingest.Identity, bool, error) {
+		return access.Ingest(r, store)
+	}).ServeHTTP)
 	r.Route("/api/v1/projects", func(r chi.Router) {
 		r.Get("/", a.projects)
 		r.Post("/", a.createProject)
 		r.Route("/{project}", func(r chi.Router) {
 			r.Patch("/", a.patchProject)
+			r.Get("/ingest-keys", a.listIngestKeys)
+			r.Post("/ingest-keys", a.createIngestKey)
+			r.Delete("/ingest-keys/{key}", a.revokeIngestKey)
 			r.Post("/retention/keep", a.keep)
 			r.Get("/metadata/keys", a.metadata(false))
 			r.Get("/metadata/values", a.metadata(true))
@@ -149,6 +154,10 @@ func (a *API) project(w http.ResponseWriter, r *http.Request, mutate bool) (stor
 	if !ok {
 		return storage.Project{}, false
 	}
+	return a.scopedProject(w, r, scope)
+}
+
+func (a *API) scopedProject(w http.ResponseWriter, r *http.Request, scope string) (storage.Project, bool) {
 	p, err := a.Store.Project(r.Context(), chi.URLParam(r, "project"))
 	if err == nil && scope != "" && scope != p.Slug && scope != p.ID {
 		err = sql.ErrNoRows

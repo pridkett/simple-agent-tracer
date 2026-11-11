@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net"
@@ -18,6 +19,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/pridkett/simple_agent_tracer/internal/ingest"
+	"github.com/pridkett/simple_agent_tracer/internal/storage"
 	"golang.org/x/oauth2"
 )
 
@@ -60,7 +62,7 @@ func New(ctx context.Context, local bool, raw string, config OIDCConfig) (*Acces
 	if raw != "" && json.Unmarshal([]byte(raw), &credentials) != nil {
 		return nil, nil, errors.New("invalid TRACER_CREDENTIALS JSON")
 	}
-	var read, write bool
+	var read bool
 	for i, c := range credentials {
 		if len(c.Token) < 24 || strings.ContainsAny(c.Token, " \r\n\t") || !namespace.MatchString(c.Project) ||
 			(c.Access != "read" && c.Access != "ingest") || (c.Access == "ingest" && !namespace.MatchString(c.Source)) || (c.Access == "read" && c.Source != "") {
@@ -74,7 +76,6 @@ func New(ctx context.Context, local bool, raw string, config OIDCConfig) (*Acces
 		}
 		a.credentials = append(a.credentials, credential{hash, c.Project, c.Source, c.Access})
 		credentials[i].Token = ""
-		write = write || c.Access == "ingest"
 		read = read || c.Access == "read"
 	}
 	if config.Issuer != "" {
@@ -110,17 +111,18 @@ func New(ctx context.Context, local bool, raw string, config OIDCConfig) (*Acces
 		a.session.Lifetime = 12 * time.Hour
 		a.session.IdleTimeout = time.Hour
 	}
-	if !local && (!write || (!read && a.session == nil)) {
-		return nil, nil, errors.New("external listener requires ingest credentials and read credentials or OIDC")
+	if !local && !read && a.session == nil {
+		return nil, nil, errors.New("external listener requires read credentials or OIDC")
 	}
 	return a, credentials, nil
 }
 
-func (a *Access) token(r *http.Request, scope string) (credential, bool) {
+func bearer(r *http.Request) (string, bool) {
 	scheme, value, ok := strings.Cut(r.Header.Get("Authorization"), " ")
-	if !ok || !strings.EqualFold(scheme, "Bearer") {
-		return credential{}, false
-	}
+	return value, ok && strings.EqualFold(scheme, "Bearer")
+}
+
+func (a *Access) token(value, scope string) (credential, bool) {
 	hash := sha256.Sum256([]byte(value))
 	var match credential
 	for _, c := range a.credentials {
@@ -131,18 +133,32 @@ func (a *Access) token(r *http.Request, scope string) (credential, bool) {
 	return match, match.access != ""
 }
 
-func (a *Access) Ingest(r *http.Request) (ingest.Identity, bool) {
+func (a *Access) Ingest(r *http.Request, store *storage.Store) (ingest.Identity, bool, error) {
 	if r.Header.Get("Authorization") == "" && a.localRequest(r) {
-		return ingest.Identity{Project: "default", Source: "local"}, true
+		return ingest.Identity{Project: "default", Source: "local"}, true, nil
 	}
-	c, ok := a.token(r, "ingest")
-	return ingest.Identity{Project: c.project, Source: c.source}, ok
+	value, ok := bearer(r)
+	if !ok {
+		return ingest.Identity{}, false, nil
+	}
+	if c, ok := a.token(value, "ingest"); ok {
+		return ingest.Identity{Project: c.project, Source: c.source}, true, nil
+	}
+	project, source, err := store.IngestKeyIdentity(r.Context(), value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ingest.Identity{}, false, nil
+	}
+	return ingest.Identity{Project: project, Source: source}, err == nil, err
 }
 
 // Query returns the allowed project slug, or an empty slug for the owner.
 func (a *Access) Query(r *http.Request, mutate bool) (string, bool) {
 	if r.Header.Get("Authorization") != "" {
-		c, ok := a.token(r, "read")
+		value, ok := bearer(r)
+		if !ok {
+			return "", false
+		}
+		c, ok := a.token(value, "read")
 		return c.project, ok && !mutate
 	}
 	if a.local {

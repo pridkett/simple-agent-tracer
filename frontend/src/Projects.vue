@@ -1,12 +1,14 @@
 <script setup>
 import { ref } from 'vue'
 import { projectPath, request } from './api'
+import ProjectIngestKeys from './ProjectIngestKeys.vue'
 
 const emit = defineEmits(['projects-changed'])
 const projects = ref([])
 const slug = ref('')
 const error = ref('')
 const busy = ref(false)
+const openKeys = ref({})
 
 async function load() {
   try { projects.value = await request('/api/v1/projects') } catch (e) { error.value = e.message }
@@ -36,17 +38,23 @@ load()
 <template>
   <h1 class="mb-5 text-2xl font-semibold">Projects</h1>
   <p v-if="error" role="alert" class="mb-4 text-sm text-red-700 dark:text-red-300">{{ error }}</p>
-  <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-    <form v-for="project in projects" :key="project.id" class="card space-y-4 p-5" @submit.prevent="save(project)">
-      <h2 class="font-semibold">{{ project.slug }}</h2>
-      <label class="field block">Retention days
-        <input v-model.number="project.retentionDays" type="number" min="1" max="36500" required class="input mt-1">
-      </label>
-      <label class="flex items-center gap-2 text-sm">
-        <input v-model="project.captureContent" type="checkbox"> Store captured content from new spans
-      </label>
-      <button class="btn-primary" :disabled="busy">Save</button>
-    </form>
+  <div class="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <section v-for="project in projects" :key="project.id" class="card min-w-0 space-y-4 p-5">
+      <h2 class="break-words font-semibold">{{ project.slug }}</h2>
+      <form class="space-y-4" @submit.prevent="save(project)">
+        <label class="field block">Retention days
+          <input v-model.number="project.retentionDays" type="number" min="1" max="36500" required class="input mt-1">
+        </label>
+        <label class="flex items-center gap-2 text-sm">
+          <input v-model="project.captureContent" type="checkbox"> Store captured content from new spans
+        </label>
+        <button class="btn-primary" :disabled="busy">Save</button>
+      </form>
+      <details class="border-t pt-4" @toggle="openKeys[project.id] = $event.target.open">
+        <summary class="cursor-pointer text-sm font-medium">Ingestion keys</summary>
+        <ProjectIngestKeys v-if="openKeys[project.id]" :project="project.slug" />
+      </details>
+    </section>
     <form class="card space-y-4 p-5" @submit.prevent="save()">
       <h2 class="font-semibold">New project</h2>
       <label class="field block">Project slug

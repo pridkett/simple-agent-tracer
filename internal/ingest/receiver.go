@@ -30,16 +30,20 @@ type Identity struct{ Project, Source string }
 
 type Receiver struct {
 	Store    *storage.Store
-	Identify func(*http.Request) (Identity, bool)
+	Identify func(*http.Request) (Identity, bool, error)
 	slots    chan struct{}
 }
 
-func New(store *storage.Store, identify func(*http.Request) (Identity, bool)) *Receiver {
+func New(store *storage.Store, identify func(*http.Request) (Identity, bool, error)) *Receiver {
 	return &Receiver{store, identify, make(chan struct{}, 4)}
 }
 
 func (h *Receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	identity, ok := h.Identify(r)
+	identity, ok, err := h.Identify(r)
+	if err != nil {
+		retry(w, err)
+		return
+	}
 	if !ok {
 		w.Header().Set("WWW-Authenticate", "Bearer")
 		fail(w, http.StatusUnauthorized, 16, "ingest credential required")
