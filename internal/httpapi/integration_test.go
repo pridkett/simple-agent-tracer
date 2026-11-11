@@ -309,6 +309,30 @@ func exercise(t *testing.T, f *fixture) string {
 	if len(next.Items) != 1 || next.Items[0].ID == page.Items[0].ID {
 		t.Fatalf("repeated page: %+v", next)
 	}
+	type spanPage struct {
+		Items      []storage.SpanRow
+		NextCursor string
+	}
+	traceWindow := root + "/traces/" + traceID + "/spans"
+	focus := traceID + "." + strings.Repeat("03", 8)
+	focused := readJSON[spanPage](t, f.call("GET", traceWindow+"?limit=3&focus="+focus, "", "", 200))
+	if len(focused.Items) != 3 || focused.Items[1].ID != strings.Repeat("03", 8) || focused.NextCursor == "" {
+		t.Fatalf("focused window is missing the span or its context: %+v", focused)
+	}
+	continuation := readJSON[spanPage](t, f.call("GET", traceWindow+"?cursor="+focused.NextCursor, "", "", 200))
+	if len(continuation.Items) != 1 || continuation.Items[0].ID != strings.Repeat("05", 8) {
+		t.Fatalf("unexpected continuation after a focused window: %+v", continuation)
+	}
+	for _, path := range []string{root + "/sessions/" + oldID + "/timeline", root + "/sessions/" + oldID + "/turns/" + turnPage.Items[0].ID} {
+		single := readJSON[spanPage](t, f.call("GET", path+"?limit=1&focus="+focus, readerToken, "", 200))
+		if len(single.Items) != 1 || single.Items[0].ID != strings.Repeat("03", 8) || single.Items[0].Trace != traceID {
+			t.Fatalf("wrong focus in %s: %+v", path, single)
+		}
+		f.call("GET", path+"?focus="+strings.Repeat("aa", 16)+"."+strings.Repeat("03", 8), readerToken, "", 404)
+	}
+	f.call("GET", traceWindow+"?focus=invalid", "", "", 400)
+	f.call("GET", traceWindow+"?focus="+focus+"&cursor="+page.NextCursor, "", "", 400)
+
 	f.call("POST", root+"/retention/keep", "", fmt.Sprintf(`{"traceIds":[%q,"absent"],"keep":true}`, traceID), 400)
 	state := readJSON[entityJSON](t, f.call("GET", root+"/traces/"+traceID, "", "", 200))
 	if state.Kept {

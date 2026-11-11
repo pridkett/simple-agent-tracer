@@ -1048,6 +1048,15 @@
           },
           {
             "ownerSession": []
+          },
+          {
+            "name": "focus",
+            "in": "query",
+            "description": "Start in a window around the span identified by trace ID and span ID separated by a dot. Use without a cursor.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}[.][0-9a-f]{16}$"
+            }
           }
         ],
         "responses": {
@@ -1199,6 +1208,15 @@
           },
           {
             "ownerSession": []
+          },
+          {
+            "name": "focus",
+            "in": "query",
+            "description": "Start in a window around the span identified by trace ID and span ID separated by a dot. Use without a cursor.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}[.][0-9a-f]{16}$"
+            }
           }
         ],
         "responses": {
@@ -1373,6 +1391,15 @@
           },
           {
             "ownerSession": []
+          },
+          {
+            "name": "focus",
+            "in": "query",
+            "description": "Start in a window around the span identified by trace ID and span ID separated by a dot. Use without a cursor.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}[.][0-9a-f]{16}$"
+            }
           }
         ],
         "responses": {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"slices"
 	"strings"
 )
 
@@ -184,14 +185,47 @@ const visibleTurn = `(m.turn_from_proxy=FALSE OR EXISTS(
  SELECT 1 FROM session_aliases va WHERE va.project=m.project AND va.proxy_session=m.session_id))`
 
 func (s *Store) SpanRows(ctx context.Context, project, kind, id, turn, span string, after *Position, limit int) ([]SpanRow, error) {
-	return s.spanRows(ctx, project, kind, id, turn, span, after, limit, false)
+	return s.spanRows(ctx, project, kind, id, turn, spanSelection{span: span, cursor: after, limit: limit})
 }
 
 func (s *Store) PrecedingModel(ctx context.Context, project, id, turn string, before *Position) ([]SpanRow, error) {
-	return s.spanRows(ctx, project, "sessions", id, turn, "", before, 1, true)
+	return s.spanRows(ctx, project, "sessions", id, turn, spanSelection{cursor: before, limit: 1, reverse: true, modelOnly: true})
 }
 
-func (s *Store) spanRows(ctx context.Context, project, kind, id, turn, span string, cursor *Position, limit int, priorModel bool) ([]SpanRow, error) {
+// FocusedSpanRows returns a window around a span in the given timeline.
+// The extra row lets the handler determine whether another page follows.
+func (s *Store) FocusedSpanRows(ctx context.Context, project, kind, id, turn, trace, span string, limit int) ([]SpanRow, error) {
+	target, err := s.spanRows(ctx, project, kind, id, turn, spanSelection{trace: trace, span: span, limit: 1})
+	if err != nil {
+		return nil, err
+	}
+	if len(target) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	position := &target[0].Position
+	var before []SpanRow
+	if contextSize := min(8, limit/3); contextSize > 0 {
+		before, err = s.spanRows(ctx, project, kind, id, turn, spanSelection{cursor: position, limit: contextSize, reverse: true})
+		if err != nil {
+			return nil, err
+		}
+		slices.Reverse(before)
+	}
+	after, err := s.SpanRows(ctx, project, kind, id, turn, "", position, limit-len(before))
+	if err != nil {
+		return nil, err
+	}
+	return append(append(before, target[0]), after...), nil
+}
+
+type spanSelection struct {
+	trace, span        string
+	cursor             *Position
+	limit              int
+	reverse, modelOnly bool
+}
+
+func (s *Store) spanRows(ctx context.Context, project, kind, id, turn string, selection spanSelection) ([]SpanRow, error) {
 	q := `SELECT m.sort_time,m.trace,m.id,COALESCE(m.session_id,''),CASE WHEN ` + visibleTurn + ` THEN m.turn_id ELSE '' END,m.conflicts,m.linked_model,m.background,m.usage_client,m.payload FROM spans m WHERE m.project=?`
 	args := []any{project, id}
 	if kind == "traces" {
@@ -204,21 +238,27 @@ func (s *Store) spanRows(ctx context.Context, project, kind, id, turn, span stri
 		q += " AND " + visibleTurn + " AND m.turn_id=?"
 		args = append(args, turn)
 	}
-	if span != "" {
+	if selection.trace != "" {
+		q += " AND m.trace=?"
+		args = append(args, selection.trace)
+	}
+	if selection.span != "" {
 		q += " AND m.id=?"
-		args = append(args, span)
+		args = append(args, selection.span)
 	}
 	operator, order := ">", "ASC"
-	if priorModel {
+	if selection.modelOnly {
 		q += " AND m.model_call=TRUE AND m.linked_model=FALSE AND m.background=FALSE"
+	}
+	if selection.reverse {
 		operator, order = "<", "DESC"
 	}
-	if cursor != nil {
+	if cursor := selection.cursor; cursor != nil {
 		q += " AND (m.sort_time,m.trace,m.id)" + operator + "(?,?,?)"
 		args = append(args, cursor.Time, cursor.Trace, cursor.ID)
 	}
 	q += " ORDER BY m.sort_time " + order + ",m.trace " + order + ",m.id " + order + " LIMIT ?"
-	args = append(args, limit)
+	args = append(args, selection.limit)
 	rows, err := s.db.QueryContext(ctx, s.bind(q), args...)
 	if err != nil {
 		return nil, err

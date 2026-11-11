@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -24,6 +25,8 @@ type API struct {
 	Store  *storage.Store
 	Access *auth.Access
 }
+
+var spanFocus = regexp.MustCompile(`^[0-9a-f]{32}\.[0-9a-f]{16}$`)
 
 func New(store *storage.Store, access *auth.Access, ui fs.FS, openapi []byte) http.Handler {
 	a := &API{store, access}
@@ -356,7 +359,18 @@ func (a *API) spans(kind string, turnDetail bool) http.HandlerFunc {
 			return
 		}
 		turn := chi.URLParam(r, "turn")
-		rows, err := a.Store.SpanRows(r.Context(), p.ID, kind, e.ID, turn, chi.URLParam(r, "span"), after, limit+1)
+		focus := r.URL.Query().Get("focus")
+		var rows []storage.SpanRow
+		if focus != "" {
+			if after != nil || !spanFocus.MatchString(focus) {
+				storeError(w, storage.ErrInvalid)
+				return
+			}
+			traceID, spanID, _ := strings.Cut(focus, ".")
+			rows, err = a.Store.FocusedSpanRows(r.Context(), p.ID, kind, e.ID, turn, traceID, spanID, limit)
+		} else {
+			rows, err = a.Store.SpanRows(r.Context(), p.ID, kind, e.ID, turn, "", after, limit+1)
+		}
 		if err != nil {
 			storeError(w, err)
 			return
@@ -375,7 +389,7 @@ func (a *API) spans(kind string, turnDetail bool) http.HandlerFunc {
 			return
 		}
 		transcript := query.NewTranscript()
-		if after != nil && len(page.Items) > 0 {
+		if (after != nil || focus != "") && len(page.Items) > 0 {
 			priorPosition := &page.Items[0].Position
 			prior, err := a.Store.PrecedingModel(r.Context(), p.ID, e.ID, turn, priorPosition)
 			if err != nil {
