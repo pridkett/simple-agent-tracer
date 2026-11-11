@@ -133,7 +133,7 @@ func (a *API) scope(w http.ResponseWriter, r *http.Request, mutate bool) (string
 	project, ok := a.Access.Query(r, mutate)
 	if !ok {
 		if mutate {
-			failure(w, 403, "owner authorization required")
+			failure(w, 403, "administrator authorization required")
 		} else {
 			failure(w, 401, "login or read credential required")
 		}

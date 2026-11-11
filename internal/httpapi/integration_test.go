@@ -87,6 +87,7 @@ func postgresFixture(t *testing.T, base string) string {
 func (f *fixture) call(method, path, token, body string, status int) *httptest.ResponseRecorder {
 	f.t.Helper()
 	request := httptest.NewRequest(method, "http://localhost"+path, strings.NewReader(body))
+	request.RemoteAddr = "127.0.0.1:12345"
 	if token != "" {
 		request.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -140,6 +141,7 @@ func (f *fixture) push(token string, compressed bool, spans ...*trace.Span) (int
 		raw = data.Bytes()
 	}
 	req := httptest.NewRequest("POST", "http://localhost/v1/traces", bytes.NewReader(raw))
+	req.RemoteAddr = "127.0.0.1:12345"
 	req.Header.Set("Content-Type", "application/x-protobuf")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)

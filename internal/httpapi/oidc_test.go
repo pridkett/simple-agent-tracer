@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +20,7 @@ import (
 	"github.com/pridkett/simple_agent_tracer/internal/storage"
 )
 
-func TestOIDCOwner(t *testing.T) {
+func TestOIDCAdministrator(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +50,21 @@ func TestOIDCOwner(t *testing.T) {
 			return
 		}
 		subject, nonce, _ := strings.Cut(r.Form.Get("code"), ":")
-		raw, _ := json.Marshal(map[string]any{"iss": issuer.URL, "sub": subject, "aud": "client", "exp": time.Now().Add(time.Minute).Unix(), "iat": time.Now().Unix(), "nonce": nonce})
+		claims := map[string]any{"iss": issuer.URL, "sub": subject, "aud": "client", "exp": time.Now().Add(time.Minute).Unix(), "iat": time.Now().Unix(), "nonce": nonce}
+		switch subject {
+		case "default-member":
+			claims["groups"] = []string{"admin"}
+		case "custom-member":
+			claims["groups"] = []string{"readers", "tracer-admins"}
+		case "wrong-case":
+			claims["groups"] = []string{"Admin", "Tracer-Admins"}
+		case "unverified-member":
+			claims["groups"] = []string{"admin", "tracer-admins"}
+			claims["email_verified"] = false
+		case "bad-groups":
+			claims["groups"] = "admin"
+		}
+		raw, _ := json.Marshal(claims)
 		signed, err := signer.Sign(raw)
 		if err != nil {
 			w.WriteHeader(500)
@@ -65,68 +80,90 @@ func TestOIDCOwner(t *testing.T) {
 	})
 	ctx := oidc.ClientContext(t.Context(), issuer.Client())
 	creds := `[{"access":"ingest","project":"default","source":"fixture","token":"` + agentToken + `"}]`
-	access, _, err := auth.New(ctx, false, creds, auth.OIDCConfig{
-		Issuer: issuer.URL, Client: "client", Secret: "fixture", Subject: "owner", Callback: origin + "/auth/callback",
-	})
-	if err != nil {
-		t.Fatal(err)
+	for _, tc := range []struct {
+		name, group, legacySubject, allowed, denied string
+	}{
+		{"default group", "", "", "default-member", "custom-member"},
+		{"configured group", "tracer-admins", "legacy-owner", "custom-member", "default-member"},
+		{"legacy subject", "", "legacy-owner", "legacy-owner", "default-member"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			access, _, err := auth.New(ctx, false, creds, auth.OIDCConfig{
+				Issuer: issuer.URL, Client: "client", Secret: "fixture", AdminGroup: tc.group, LegacyOwnerSubject: tc.legacySubject, Callback: origin + "/auth/callback",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			store, err := storage.Open(ctx, filepath.Join(t.TempDir(), "fixture.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			handler := httpapi.New(store, access, nil, nil)
+			request := func(method, path, from string, cookie *http.Cookie, want int) *httptest.ResponseRecorder {
+				t.Helper()
+				req := httptest.NewRequestWithContext(ctx, method, origin+path, strings.NewReader(`{"slug":"oidc-created"}`))
+				if from != "" {
+					req.Header.Set("Origin", from)
+				}
+				if cookie != nil {
+					req.AddCookie(cookie)
+				}
+				res := httptest.NewRecorder()
+				handler.ServeHTTP(res, req)
+				if res.Code != want {
+					t.Fatalf("%s %s: got %d want %d: %s", method, path, res.Code, want, res.Body.String())
+				}
+				return res
+			}
+			request("GET", "/api/v1/projects", "", nil, 401)
+			login := func(subject string, want int, validState bool) *httptest.ResponseRecorder {
+				res := request("GET", "/auth/login", "", nil, 303)
+				redirect, err := url.Parse(res.Header().Get("Location"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				query := redirect.Query()
+				state, nonce := query.Get("state"), query.Get("nonce")
+				if state == "" || nonce == "" || query.Get("code_challenge_method") != "S256" {
+					t.Fatal("incomplete OIDC request")
+				}
+				if !validState {
+					state = "mismatch"
+				}
+				scopes := strings.Fields(query.Get("scope"))
+				for _, scope := range []string{"openid", "email", "profile", "groups"} {
+					if !slices.Contains(scopes, scope) {
+						t.Fatalf("missing OIDC scope %s", scope)
+					}
+				}
+				cookies := res.Result().Cookies()
+				if len(cookies) != 1 || !cookies[0].Secure || !cookies[0].HttpOnly || cookies[0].Path != "/" || cookies[0].Name != "__Host-tracer" {
+					t.Fatalf("unexpected OIDC state cookie: %v", cookies)
+				}
+				values := url.Values{"state": {state}, "code": {subject + ":" + nonce}}
+				return request("GET", "/auth/callback?"+values.Encode(), "", cookies[0], want)
+			}
+			login(tc.allowed, 400, false)
+			login(tc.denied, 403, true)
+			for _, denied := range []string{"visitor", "wrong-case", "unverified-member", "bad-groups"} {
+				login(denied, 403, true)
+			}
+			if tc.group != "" {
+				login("legacy-owner", 403, true)
+			}
+			result := login(tc.allowed, 303, true)
+			cookies := result.Result().Cookies()
+			if len(cookies) != 1 {
+				t.Fatal("missing owner session cookie")
+			}
+			owner := cookies[0]
+			request("GET", "/api/v1/projects", "", owner, 200)
+			request("POST", "/api/v1/projects", "https://other.example", owner, 403)
+			request("POST", "/api/v1/projects", "", owner, 403)
+			request("POST", "/api/v1/projects", origin, owner, 201)
+			request("POST", "/auth/logout", origin, owner, 204)
+			request("GET", "/api/v1/projects", "", owner, 401)
+		})
 	}
-	store, err := storage.Open(ctx, filepath.Join(t.TempDir(), "fixture.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	handler := httpapi.New(store, access, nil, nil)
-	request := func(method, path, from string, cookie *http.Cookie, want int) *httptest.ResponseRecorder {
-		t.Helper()
-		req := httptest.NewRequestWithContext(ctx, method, origin+path, strings.NewReader(`{"slug":"oidc-created"}`))
-		if from != "" {
-			req.Header.Set("Origin", from)
-		}
-		if cookie != nil {
-			req.AddCookie(cookie)
-		}
-		res := httptest.NewRecorder()
-		handler.ServeHTTP(res, req)
-		if res.Code != want {
-			t.Fatalf("%s %s: got %d want %d: %s", method, path, res.Code, want, res.Body.String())
-		}
-		return res
-	}
-	request("GET", "/api/v1/projects", "", nil, 401)
-	login := func(subject string, want int, validState bool) *httptest.ResponseRecorder {
-		res := request("GET", "/auth/login", "", nil, 303)
-		redirect, err := url.Parse(res.Header().Get("Location"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		query := redirect.Query()
-		state, nonce := query.Get("state"), query.Get("nonce")
-		if state == "" || nonce == "" || query.Get("code_challenge_method") != "S256" {
-			t.Fatal("incomplete OIDC request")
-		}
-		if !validState {
-			state = "mismatch"
-		}
-		cookies := res.Result().Cookies()
-		if len(cookies) != 1 || !cookies[0].Secure || !cookies[0].HttpOnly || cookies[0].Path != "/" || cookies[0].Name != "__Host-tracer" {
-			t.Fatalf("unexpected OIDC state cookie: %v", cookies)
-		}
-		values := url.Values{"state": {state}, "code": {subject + ":" + nonce}}
-		return request("GET", "/auth/callback?"+values.Encode(), "", cookies[0], want)
-	}
-	login("owner", 400, false)
-	login("visitor", 403, true)
-	result := login("owner", 303, true)
-	cookies := result.Result().Cookies()
-	if len(cookies) != 1 {
-		t.Fatal("missing owner session cookie")
-	}
-	owner := cookies[0]
-	request("GET", "/api/v1/projects", "", owner, 200)
-	request("POST", "/api/v1/projects", "https://other.example", owner, 403)
-	request("POST", "/api/v1/projects", "", owner, 403)
-	request("POST", "/api/v1/projects", origin, owner, 201)
-	request("POST", "/auth/logout", origin, owner, 204)
-	request("GET", "/api/v1/projects", "", owner, 401)
 }

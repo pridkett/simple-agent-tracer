@@ -37,11 +37,12 @@ func run() error {
 		return errors.New("invalid bind address")
 	}
 	ip, _ := netip.ParseAddr(host)
-	local := ip.IsLoopback() && os.Getenv("TRACER_OIDC_ISSUER") == ""
+	loopback := ip.Unmap().IsLoopback()
+	local := loopback && os.Getenv("TRACER_OIDC_ISSUER") == ""
 	switch os.Getenv("TRACER_AUTH_MODE") {
 	case "", "auto":
 	case "local":
-		if !ip.IsLoopback() {
+		if !loopback {
 			return errors.New("local mode requires a loopback IP bind")
 		}
 		local = true
@@ -73,7 +74,7 @@ func run() error {
 	access, credentials, err := auth.New(setup, local, os.Getenv("TRACER_CREDENTIALS"), auth.OIDCConfig{
 		Issuer: os.Getenv("TRACER_OIDC_ISSUER"), Client: os.Getenv("TRACER_OIDC_CLIENT_ID"),
 		Secret: os.Getenv("TRACER_OIDC_CLIENT_SECRET"), Callback: os.Getenv("TRACER_OIDC_CALLBACK"),
-		Subject: os.Getenv("TRACER_OIDC_OWNER_SUBJECT"),
+		AdminGroup: os.Getenv("TRACER_OIDC_ADMIN_GROUP"), LegacyOwnerSubject: os.Getenv("TRACER_OIDC_OWNER_SUBJECT"),
 	})
 	if err != nil {
 		return err
