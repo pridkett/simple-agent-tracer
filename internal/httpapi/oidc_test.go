@@ -79,7 +79,6 @@ func TestOIDCAdministrator(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "fixture", "token_type": "Bearer", "id_token": id})
 	})
 	ctx := oidc.ClientContext(t.Context(), issuer.Client())
-	creds := `[{"access":"ingest","project":"default","source":"fixture","token":"` + agentToken + `"}]`
 	for _, tc := range []struct {
 		name, group, legacySubject, allowed, denied string
 	}{
@@ -88,7 +87,7 @@ func TestOIDCAdministrator(t *testing.T) {
 		{"legacy subject", "", "legacy-owner", "legacy-owner", "default-member"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			access, _, err := auth.New(ctx, false, creds, auth.OIDCConfig{
+			access, _, err := auth.New(ctx, false, "", auth.OIDCConfig{
 				Issuer: issuer.URL, Client: "client", Secret: "fixture", AdminGroup: tc.group, LegacyOwnerSubject: tc.legacySubject, Callback: origin + "/auth/callback",
 			})
 			if err != nil {
@@ -102,7 +101,11 @@ func TestOIDCAdministrator(t *testing.T) {
 			handler := httpapi.New(store, access, nil, nil)
 			request := func(method, path, from string, cookie *http.Cookie, want int) *httptest.ResponseRecorder {
 				t.Helper()
-				req := httptest.NewRequestWithContext(ctx, method, origin+path, strings.NewReader(`{"slug":"oidc-created"}`))
+				body := `{"slug":"oidc-created"}`
+				if strings.HasSuffix(path, "/ingest-keys") {
+					body = `{"source":"oidc-exporter"}`
+				}
+				req := httptest.NewRequestWithContext(ctx, method, origin+path, strings.NewReader(body))
 				if from != "" {
 					req.Header.Set("Origin", from)
 				}
@@ -170,6 +173,12 @@ func TestOIDCAdministrator(t *testing.T) {
 			request("POST", "/api/v1/projects", "https://other.example", owner, 403)
 			request("POST", "/api/v1/projects", "", owner, 403)
 			request("POST", "/api/v1/projects", origin, owner, 201)
+			keys := "/api/v1/projects/oidc-created/ingest-keys"
+			request("GET", keys, "", nil, 401)
+			request("POST", keys, "https://other.example", owner, 403)
+			request("POST", keys, "", owner, 403)
+			request("POST", keys, origin, owner, 201)
+			request("GET", keys, "", owner, 200)
 			request("POST", "/auth/logout", origin, owner, 204)
 			request("GET", "/api/v1/projects", "", owner, 401)
 		})

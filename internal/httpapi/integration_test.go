@@ -215,6 +215,7 @@ func TestDatabaseParity(t *testing.T) {
 			if err != nil || p.Retention != 30 || p.Capture {
 				t.Fatalf("unexpected project after reopen: %+v %v", p, err)
 			}
+			exerciseIngestKeys(t, f, dsn)
 			if backend == "sqlite" {
 				sqliteResult = snapshot
 			} else if snapshot != sqliteResult {
@@ -222,6 +223,50 @@ func TestDatabaseParity(t *testing.T) {
 			}
 		})
 	}
+}
+
+func exerciseIngestKeys(t *testing.T, f *fixture, dsn string) {
+	t.Helper()
+	const project = "/api/v1/projects/test-project"
+	const keys = project + "/ingest-keys"
+	const source = `{"source":"simple-llm-proxy"}`
+	f.call("POST", "/api/v1/projects", "", `{"slug":"test-project"}`, 201)
+	f.call("GET", root+"/ingest-keys", readerToken, "", 403)
+	f.call("POST", root+"/ingest-keys", readerToken, source, 403)
+	f.call("POST", keys, "", `{"source":"bad source"}`, 400)
+	create := func() (storage.IngestKey, string) {
+		w := f.call("POST", keys, "", source, 201)
+		value := readJSON[struct {
+			storage.IngestKey
+			Token string
+		}](t, w)
+		if value.ID == "" || value.Source != "simple-llm-proxy" || value.Prefix == "" ||
+			value.Token == value.Prefix || !strings.HasPrefix(value.Token, value.Prefix) || w.Header().Get("Cache-Control") != "no-store" {
+			t.Fatal("invalid key response")
+		}
+		return value.IngestKey, value.Token
+	}
+	key, token := create()
+	restarted := newFixture(t, dsn)
+	list := restarted.call("GET", keys, "", "", 200)
+	if found := readJSON[[]storage.IngestKey](t, list); len(found) != 1 || found[0] != key ||
+		strings.Contains(list.Body.String(), token) || strings.Contains(list.Body.String(), `"digest"`) {
+		t.Fatal("key list should retain only safe metadata after restart")
+	}
+	restarted.call("GET", project+"/traces", token, "", 401)
+	restarted.call("DELETE", root+"/ingest-keys/"+key.ID, "", "", 404)
+	span := makeSpan(250, 1, 0, "managed key export", time.Now())
+	restarted.ingest(token, 0, span)
+	tracePath := "/traces/" + strings.Repeat("fa", 16) + "/spans/" + strings.Repeat("01", 8)
+	restarted.call("GET", root+tracePath, "", "", 404)
+	detail := restarted.call("GET", project+tracePath, "", "", 200)
+	if !strings.Contains(detail.Body.String(), "simple-llm-proxy") {
+		t.Fatal("span missing managed key source")
+	}
+	_, replacement := create()
+	restarted.call("DELETE", keys+"/"+key.ID, "", "", 204)
+	restarted.call("POST", "/v1/traces", token, "", 401)
+	restarted.ingest(replacement, 0, span)
 }
 
 func exercise(t *testing.T, f *fixture) string {

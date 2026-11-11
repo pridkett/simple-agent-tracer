@@ -104,30 +104,36 @@ func (s *Store) migrate(ctx context.Context) error {
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version),0) FROM schema_migrations`).Scan(&version); err != nil {
 			return err
 		}
-		if version > 1 {
+		const latest = 2
+		if version > latest {
 			return fmt.Errorf("database schema version %d is newer than supported", version)
-		}
-		if version == 1 {
-			return nil
 		}
 		backend := "sqlite"
 		if s.postgres {
 			backend = "postgres"
 		}
-		ddl, err := migrations.ReadFile("migrations/001_" + backend + ".sql")
-		if err != nil {
-			return err
-		}
-		for _, statement := range strings.Split(string(ddl), ";") {
-			if strings.TrimSpace(statement) == "" {
-				continue
+		for next := version + 1; next <= latest; next++ {
+			path := fmt.Sprintf("migrations/%03d_%s.sql", next, backend)
+			if next == 2 {
+				path = "migrations/002_ingest_keys.sql"
 			}
-			if _, err = tx.ExecContext(ctx, statement); err != nil {
+			ddl, err := migrations.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			for _, statement := range strings.Split(string(ddl), ";") {
+				if strings.TrimSpace(statement) == "" {
+					continue
+				}
+				if _, err = tx.ExecContext(ctx, statement); err != nil {
+					return err
+				}
+			}
+			if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO schema_migrations(version) VALUES (?)`), next); err != nil {
 				return err
 			}
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO schema_migrations(version) VALUES (1)`)
-		return err
+		return nil
 	})
 }
 

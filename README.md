@@ -26,13 +26,13 @@ With `TRACER_OIDC_ISSUER` unset, the browser opens as a local administrator with
 | `TRACER_BIND` or `-bind` | HTTP address. Defaults to `127.0.0.1:4318`. |
 | `TRACER_DATABASE_URL` or `-database` | SQLite path or `file:` URI, or a `postgres://` or `postgresql://` DSN. |
 | `TRACER_PROJECTS` | Comma-separated project slugs to provision at startup. Existing project settings take precedence. |
-| `TRACER_AUTH_MODE` | `auto` uses local access for loopback IP binds without OIDC. `authenticated` requires ingest credentials and either a read credential or OIDC on any bind. `local` requires a loopback IP bind and an unset OIDC issuer. |
-| `TRACER_CREDENTIALS` | JSON array of bearer credentials. Each token needs at least 24 characters. Give each ingest token a project and source. Give each read token a project. |
+| `TRACER_AUTH_MODE` | `auto` uses local access for loopback IP binds without OIDC. `authenticated` requires a read credential or OIDC on any bind and authenticates every ingest request. `local` requires a loopback IP bind and an unset OIDC issuer. |
+| `TRACER_CREDENTIALS` | JSON array of deployment-managed bearer credentials. Each token needs at least 24 characters. Give each ingest token a project and source. Give each read token a project. OIDC deployments can create ingest keys in the UI without setting this variable. |
 | `TRACER_OIDC_ADMIN_GROUP` | Exact group name from the verified OIDC ID token. Defaults to `admin`, matching the proxy. |
 
 For PostgreSQL, give the database role permission to create the schema objects. Startup applies versioned migrations. The tracer uses at most 10 connections per process. Use a TLS DSN such as `sslmode=verify-full` for network deployments. Changing the DSN starts the tracer against the selected database. SQLite files and PostgreSQL databases are independent.
 
-Replace the three placeholders in this credential configuration with separate random tokens.
+For deployment-managed credentials, replace the three placeholders in this example with separate random tokens.
 
 ```json
 [
@@ -64,6 +64,10 @@ docker run --rm --name tracer \
 Export `TRACER_CREDENTIALS` before running the command. This example uses authenticated ingest and read tokens. Pass the OIDC settings to enable browser sign-in. The image runs as UID and GID `65532` and includes the CA bundle. The default container SQLite path is `/data/tracer.db`. If you bind mount a host directory, ensure that UID `65532` can write to the directory and any existing SQLite database and sidecar files. PostgreSQL only needs the DSN, so omit the data mount. For unauthenticated local UI in a Linux container, use host networking with the default loopback bind and omit the port publication.
 
 ## Ingest, capture, and retention
+
+To send spans to a project, open **Projects → your project → Ingestion keys**. Give the exporter a source name (for example, `simple-llm-proxy`) and select **Create key**. Copy the `Bearer …` value when it appears and use it as the exporter's `Authorization` header. For simple-llm-proxy, set `TRACER_OTLP_AUTH_HEADER` to that full value. The key selects the project and source.
+
+The tracer stores a hash and shows only a prefix after creation. To rotate a key, create a replacement with the same source name, update the exporter, then revoke the old key. Revoking a key leaves existing spans intact. Keys supplied through `TRACER_CREDENTIALS` are managed through deployment configuration.
 
 The receiver accepts OTLP HTTP protobuf at `POST /v1/traces`, including gzip. Configure the full URL for `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and a base URL for exporters that append `/v1/traces`. The receiver handles up to four concurrent exports, 8 MiB of request data, 16 MiB after decoding, and 2,000 spans per batch. It caps normalized batch data at approximately 48 MiB to bound repeated resource metadata. Individual attribute values are capped at 64 KiB, with a shared 96 KiB metadata budget and a 64 KiB content budget per span. Oversized or malformed requests get a permanent client error. Invalid spans in a valid envelope are reported in OTLP partial success. A busy receiver or temporary database failure includes `Retry-After`.
 

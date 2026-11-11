@@ -213,6 +213,168 @@
         }
       }
     },
+    "/api/v1/projects/{project}/ingest-keys": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "List project ingestion keys",
+        "security": [
+          {},
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Key identifiers, sources, and prefixes. Secrets are never returned by this operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IngestKey"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a project ingestion key",
+        "security": [
+          {},
+          {
+            "ownerSession": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "source"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new key. Copy the token from this response; it cannot be retrieved later.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/IngestKey"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "token"
+                      ],
+                      "properties": {
+                        "token": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/ingest-keys/{key}": {
+      "parameters": [
+        {
+          "name": "project",
+          "in": "path",
+          "description": "Project slug or internal ID.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "key",
+          "in": "path",
+          "description": "Key ID from the list or create response.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "delete": {
+        "summary": "Revoke a project ingestion key",
+        "security": [
+          {},
+          {
+            "ownerSession": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Key revoked."
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/DatabaseError"
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project}/retention/keep": {
       "parameters": [
         {
@@ -1718,6 +1880,26 @@
           "retentionDays",
           "captureContent"
         ]
+      },
+      "IngestKey": {
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "prefix"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string",
+            "description": "Visible prefix for identifying the key."
+          }
+        }
       },
       "ProjectCreate": {
         "type": "object",
