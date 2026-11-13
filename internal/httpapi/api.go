@@ -57,6 +57,7 @@ func New(store *storage.Store, access *auth.Access, ui fs.FS, openapi []byte) ht
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(openapi)
 	})
+	r.Get(auth.ResourceMetadataPrefix+"/api/v1/projects/{project}/mcp", a.queryResourceMetadata)
 	r.Get("/auth/status", access.Status)
 	r.Get("/auth/login", access.Login)
 	r.Get("/auth/callback", access.Callback)
@@ -73,6 +74,9 @@ func New(store *storage.Store, access *auth.Access, ui fs.FS, openapi []byte) ht
 			r.Post("/ingest-keys", a.createIngestKey)
 			r.Delete("/ingest-keys/{key}", a.revokeIngestKey)
 			r.Post("/retention/keep", a.keep)
+			r.Post("/query", a.modelQuery)
+			r.Post("/query/export", a.modelExport)
+			r.HandleFunc("/mcp", a.modelMCP())
 			r.Get("/metadata/keys", a.metadata(false))
 			r.Get("/metadata/values", a.metadata(true))
 			for _, kind := range []string{"traces", "sessions"} {

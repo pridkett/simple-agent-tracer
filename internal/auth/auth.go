@@ -38,6 +38,7 @@ type credential struct {
 type OIDCConfig struct {
 	Issuer, Client, Secret, Callback, AdminGroup string
 	LegacyOwnerSubject                           string
+	QueryOAuth                                   bool
 }
 
 type Access struct {
@@ -46,6 +47,7 @@ type Access struct {
 	session       *scs.SessionManager
 	provider      *oidc.IDTokenVerifier
 	oauth         *oauth2.Config
+	queryOAuth    *queryOAuth
 	adminGroup    string
 	legacySubject string
 	origin        string
@@ -56,6 +58,9 @@ var namespace = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
 func New(ctx context.Context, local bool, raw string, config OIDCConfig) (*Access, []Credential, error) {
 	if local && config.Issuer != "" {
 		return nil, nil, errors.New("local mode cannot be used with OIDC")
+	}
+	if config.QueryOAuth && config.Issuer == "" {
+		return nil, nil, errors.New("query OAuth requires OIDC configuration")
 	}
 	a := &Access{local: local}
 	var credentials []Credential
@@ -104,6 +109,12 @@ func New(ctx context.Context, local bool, raw string, config OIDCConfig) (*Acces
 			a.legacySubject = config.LegacyOwnerSubject
 		}
 		a.origin = redirect.Scheme + "://" + redirect.Host
+		if config.QueryOAuth {
+			a.queryOAuth, err = newQueryOAuth(ctx, provider, config.Issuer, a.origin)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
 		a.session = scs.New()
 		a.session.Cookie.Name = "__Host-tracer"
 		a.session.Cookie.Secure = true
@@ -166,6 +177,22 @@ func (a *Access) Query(r *http.Request, mutate bool) (string, bool) {
 	}
 	return "", a.session != nil && a.session.GetBool(r.Context(), "owner") &&
 		(!mutate || r.Header.Get("Origin") == a.origin)
+}
+
+// AllowsMCPRequest enforces loopback Host validation in local mode and
+// checks a browser's Origin against the configured public origin.
+func (a *Access) AllowsMCPRequest(r *http.Request) bool {
+	origins := r.Header.Values("Origin")
+	if a.local {
+		return len(origins) <= 1 && a.localRequest(r)
+	}
+	if len(origins) == 0 {
+		return true
+	}
+	if len(origins) != 1 || origins[0] == "" {
+		return false
+	}
+	return origins[0] == a.origin
 }
 
 func (a *Access) localRequest(r *http.Request) bool {

@@ -188,22 +188,51 @@ func (a *Accumulator) Add(o storage.Observation) error {
 	if err := json.Unmarshal(o.Usage, &u); err != nil {
 		return err
 	}
+	if err := fillUsage(&u, o.Fallback); err != nil {
+		return err
+	}
+	return a.addUsage(u)
+}
+
+type tokenField struct {
+	name  string
+	value **int64
+}
+
+func tokenFields(u *semantic.Usage) []tokenField {
+	return []tokenField{
+		{"input", &u.Input}, {"output", &u.Output}, {"cacheRead", &u.CacheRead},
+		{"cacheWrite", &u.CacheWrite}, {"reasoning", &u.Reasoning}, {"total", &u.Total},
+	}
+}
+
+func fillUsage(usage *semantic.Usage, raw json.RawMessage) error {
+	if len(raw) == 0 {
+		return nil
+	}
 	var fallback semantic.Usage
-	if len(o.Fallback) > 0 {
-		if err := json.Unmarshal(o.Fallback, &fallback); err != nil {
-			return err
+	if err := json.Unmarshal(raw, &fallback); err != nil {
+		return err
+	}
+	if usage.Provenance == nil {
+		usage.Provenance = map[string]string{}
+	}
+	fields := tokenFields(usage)
+	for i, alternative := range tokenFields(&fallback) {
+		field := fields[i]
+		key := fallback.Provenance[field.name]
+		if *field.value == nil && usage.Provenance[field.name] == "" && *alternative.value != nil && strings.HasPrefix(key, "gen_ai.usage.") {
+			*field.value = *alternative.value
+			usage.Provenance[field.name] = key
 		}
 	}
-	for _, field := range []struct {
-		name             string
-		value, alternate *int64
-	}{
-		{"input", u.Input, fallback.Input}, {"output", u.Output, fallback.Output}, {"cacheRead", u.CacheRead, fallback.CacheRead}, {"cacheWrite", u.CacheWrite, fallback.CacheWrite}, {"reasoning", u.Reasoning, fallback.Reasoning}, {"total", u.Total, fallback.Total},
-	} {
-		if field.value == nil && u.Provenance[field.name] == "" && strings.HasPrefix(fallback.Provenance[field.name], "gen_ai.usage.") {
-			field.value = field.alternate
-		}
-		if field.value == nil {
+	return nil
+}
+
+func (a *Accumulator) addUsage(u semantic.Usage) error {
+	for _, field := range tokenFields(&u) {
+		value := *field.value
+		if value == nil {
 			continue
 		}
 		n := a.tokens[field.name]
@@ -211,7 +240,7 @@ func (a *Accumulator) Add(o storage.Observation) error {
 			n = new(big.Int)
 			a.tokens[field.name] = n
 		}
-		n.Add(n, big.NewInt(*field.value))
+		n.Add(n, big.NewInt(*value))
 		a.Tokens[field.name] = Total{n.String(), a.Tokens[field.name].Known + 1}
 	}
 	if u.Amount != "" {

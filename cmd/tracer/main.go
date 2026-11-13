@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -71,8 +72,12 @@ func run() error {
 			}
 		}
 	}
+	queryOAuth, err := strconv.ParseBool(env("TRACER_QUERY_OAUTH", "false"))
+	if err != nil {
+		return errors.New("invalid TRACER_QUERY_OAUTH")
+	}
 	access, credentials, err := auth.New(setup, local, os.Getenv("TRACER_CREDENTIALS"), auth.OIDCConfig{
-		Issuer: os.Getenv("TRACER_OIDC_ISSUER"), Client: os.Getenv("TRACER_OIDC_CLIENT_ID"),
+		Issuer: os.Getenv("TRACER_OIDC_ISSUER"), Client: os.Getenv("TRACER_OIDC_CLIENT_ID"), QueryOAuth: queryOAuth,
 		Secret: os.Getenv("TRACER_OIDC_CLIENT_SECRET"), Callback: os.Getenv("TRACER_OIDC_CALLBACK"),
 		AdminGroup: os.Getenv("TRACER_OIDC_ADMIN_GROUP"), LegacyOwnerSubject: os.Getenv("TRACER_OIDC_OWNER_SUBJECT"),
 	})

@@ -29,6 +29,7 @@ With `TRACER_OIDC_ISSUER` unset, the browser opens as a local administrator with
 | `TRACER_AUTH_MODE` | `auto` uses local access for loopback IP binds without OIDC. `authenticated` requires a read credential or OIDC on any bind and authenticates every ingest request. `local` requires a loopback IP bind and an unset OIDC issuer. |
 | `TRACER_CREDENTIALS` | JSON array of deployment-managed bearer credentials. Each token needs at least 24 characters. Give each ingest token a project and source. Give each read token a project. OIDC deployments can create ingest keys in the UI without setting this variable. |
 | `TRACER_OIDC_ADMIN_GROUP` | Exact group name from the verified OIDC ID token. Defaults to `admin`, matching the proxy. |
+| `TRACER_QUERY_OAUTH` | Set to `true` to accept project-bound OAuth access tokens for MCP and bulk queries. Requires OIDC configuration. Defaults to `false`. |
 
 For PostgreSQL, give the database role permission to create the schema objects. Startup applies versioned migrations. The tracer uses at most 10 connections per process. Use a TLS DSN such as `sslmode=verify-full` for network deployments. Changing the DSN starts the tracer against the selected database. SQLite files and PostgreSQL databases are independent.
 
@@ -80,6 +81,18 @@ Every minute the sweeper deletes up to 200 eligible traces. Eligibility follows 
 Use the [proxy setup in the design](DESIGN.md#proxy-integration-setup) to configure the OTLP HTTP exporter, a dedicated application key, and the application's capture allowlist. Set `TRACER_OTLP_AUTH_HEADER` to the full bearer header value. Set `X-Session-ID` in the client to keep proxy-only traffic grouped. The tracer correlates agent and proxy exports when a trusted incoming `traceparent` preserves ancestry and the proxy's application-scoped session digest matches the native session ID. Separate application keys can use the same client session ID without sharing their proxy sessions across applications.
 
 Install the optional integrations from [the agent setup instructions](integrations/README.md). Both use the proxy for model snapshots and billing. Enable agent tool payload capture independently.
+
+## Bulk model-call queries
+
+Query model responses, costs, and timings across a project with
+`POST /api/v1/projects/{project}/query`. Send structured filters or a read-only
+SQL `SELECT FROM model_calls`. Select `output_messages` to include captured
+model responses. Use `POST /api/v1/projects/{project}/query/export` for NDJSON.
+
+For agents, configure Streamable HTTP at
+`/api/v1/projects/{project}/mcp` with a project read bearer token and call
+`query_model_calls`. See the [query design and examples](QUERY-DESIGN.md)
+and the [Pocket ID OAuth setup](QUERY-OAUTH.md) for ChatGPT and Claude Desktop.
 
 ## Verification
 
