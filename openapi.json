@@ -390,6 +390,9 @@
           },
           {
             "ownerSession": []
+          },
+          {
+            "queryOAuth": []
           }
         ],
         "requestBody": {
@@ -418,6 +421,16 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "OAuth token lacks traces:read for the project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -463,6 +476,9 @@
           },
           {
             "ownerSession": []
+          },
+          {
+            "queryOAuth": []
           }
         ],
         "requestBody": {
@@ -491,6 +507,16 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "OAuth token lacks traces:read for the project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -3113,6 +3139,12 @@
       }
     },
     "securitySchemes": {
+      "queryOAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Optional OAuth access token for the project's canonical MCP URL with traces:read scope."
+      },
       "projectRead": {
         "type": "http",
         "scheme": "bearer",

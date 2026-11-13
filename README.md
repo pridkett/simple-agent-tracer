@@ -29,6 +29,7 @@ With `TRACER_OIDC_ISSUER` unset, the browser opens as a local administrator with
 | `TRACER_AUTH_MODE` | `auto` uses local access for loopback IP binds without OIDC. `authenticated` requires a read credential or OIDC on any bind and authenticates every ingest request. `local` requires a loopback IP bind and an unset OIDC issuer. |
 | `TRACER_CREDENTIALS` | JSON array of deployment-managed bearer credentials. Each token needs at least 24 characters. Give each ingest token a project and source. Give each read token a project. OIDC deployments can create ingest keys in the UI without setting this variable. |
 | `TRACER_OIDC_ADMIN_GROUP` | Exact group name from the verified OIDC ID token. Defaults to `admin`, matching the proxy. |
+| `TRACER_QUERY_OAUTH` | Set to `true` to accept project-bound OAuth access tokens for MCP and bulk queries. Requires OIDC configuration. Defaults to `false`. |
 
 For PostgreSQL, give the database role permission to create the schema objects. Startup applies versioned migrations. The tracer uses at most 10 connections per process. Use a TLS DSN such as `sslmode=verify-full` for network deployments. Changing the DSN starts the tracer against the selected database. SQLite files and PostgreSQL databases are independent.
 
@@ -90,7 +91,8 @@ model responses. Use `POST /api/v1/projects/{project}/query/export` for NDJSON.
 
 For agents, configure Streamable HTTP at
 `/api/v1/projects/{project}/mcp` with a project read bearer token and call
-`query_model_calls`. See the [query design and examples](QUERY-DESIGN.md).
+`query_model_calls`. See the [query design and examples](QUERY-DESIGN.md)
+and the [Pocket ID OAuth setup](QUERY-OAUTH.md) for ChatGPT and Claude Desktop.
 
 ## Verification
 

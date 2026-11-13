@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/pridkett/simple_agent_tracer/internal/auth"
 	"github.com/pridkett/simple_agent_tracer/internal/query"
 	"github.com/pridkett/simple_agent_tracer/internal/storage"
 )
@@ -32,8 +34,56 @@ func modelQueryError(ctx context.Context, err error) (int, string) {
 	}
 }
 
+func (a *API) queryProject(w http.ResponseWriter, r *http.Request) (storage.Project, bool) {
+	if scope, ok := a.Access.Query(r, false); ok {
+		return a.scopedProject(w, r, scope)
+	}
+	project := chi.URLParam(r, "project")
+	metadata, metadataURL, enabled := a.Access.QueryResource(project)
+	if !enabled {
+		failure(w, http.StatusUnauthorized, "login or read credential required")
+		return storage.Project{}, false
+	}
+	status := a.Access.CheckQueryOAuth(r, metadata.Resource)
+	if status == http.StatusOK {
+		return a.oauthProject(w, r, project)
+	}
+	challenge := fmt.Sprintf("Bearer resource_metadata=%q, scope=%q", metadataURL, auth.QueryReadScope)
+	message := "OAuth access token or project read credential required"
+	if status == http.StatusForbidden {
+		challenge += `, error="insufficient_scope"`
+		message = "OAuth access token lacks " + auth.QueryReadScope
+	} else if r.Header.Get("Authorization") != "" {
+		challenge += `, error="invalid_token"`
+	}
+	w.Header().Set("WWW-Authenticate", challenge)
+	failure(w, status, message)
+	return storage.Project{}, false
+}
+
+func (a *API) oauthProject(w http.ResponseWriter, r *http.Request, slug string) (storage.Project, bool) {
+	p, ok := a.scopedProject(w, r, slug)
+	if ok && p.Slug != slug {
+		failure(w, http.StatusNotFound, "resource not found")
+		return storage.Project{}, false
+	}
+	return p, ok
+}
+
+func (a *API) queryResourceMetadata(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "project")
+	metadata, _, enabled := a.Access.QueryResource(slug)
+	if !enabled {
+		http.NotFound(w, r)
+		return
+	}
+	if _, ok := a.oauthProject(w, r, slug); ok {
+		respond(w, http.StatusOK, metadata)
+	}
+}
+
 func (a *API) modelQuery(w http.ResponseWriter, r *http.Request) {
-	p, ok := a.project(w, r, false)
+	p, ok := a.queryProject(w, r)
 	if !ok {
 		return
 	}
@@ -71,12 +121,18 @@ func (a *API) modelMCP() http.HandlerFunc {
 		{Required: []string{"sql"}},
 		{Required: []string{"from", "to"}},
 	}
-	server.AddTool(&mcp.Tool{
+	tool := &mcp.Tool{
 		Name:        "query_model_calls",
 		Description: "Read retained model calls in this project, including costs and timings. Use from/to and filters, or a read-only SQL SELECT FROM model_calls. Select output_messages explicitly for captured model output. Follow nextCursor to read more rows.",
 		InputSchema: schema,
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: &closedWorld},
-	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	}
+	if a.Access.QueryOAuthEnabled() {
+		tool.Meta = mcp.Meta{"securitySchemes": []map[string]any{
+			{"type": "oauth2", "scopes": []string{auth.QueryReadScope}},
+		}}
+	}
+	server.AddTool(tool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		result := &mcp.CallToolResult{}
 		project, ok := ctx.Value(projectContextKey{}).(string)
 		if !ok {
@@ -117,7 +173,7 @@ func (a *API) modelMCP() http.HandlerFunc {
 			failure(w, http.StatusForbidden, "invalid host or origin")
 			return
 		}
-		p, ok := a.project(w, r, false)
+		p, ok := a.queryProject(w, r)
 		if !ok {
 			return
 		}
@@ -126,7 +182,7 @@ func (a *API) modelMCP() http.HandlerFunc {
 }
 
 func (a *API) modelExport(w http.ResponseWriter, r *http.Request) {
-	p, ok := a.project(w, r, false)
+	p, ok := a.queryProject(w, r)
 	if !ok {
 		return
 	}

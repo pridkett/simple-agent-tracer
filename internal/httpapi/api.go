@@ -57,6 +57,7 @@ func New(store *storage.Store, access *auth.Access, ui fs.FS, openapi []byte) ht
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(openapi)
 	})
+	r.Get(auth.ResourceMetadataPrefix+"/api/v1/projects/{project}/mcp", a.queryResourceMetadata)
 	r.Get("/auth/status", access.Status)
 	r.Get("/auth/login", access.Login)
 	r.Get("/auth/callback", access.Callback)
