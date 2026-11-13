@@ -168,6 +168,22 @@ func (a *Access) Query(r *http.Request, mutate bool) (string, bool) {
 		(!mutate || r.Header.Get("Origin") == a.origin)
 }
 
+// AllowsMCPRequest enforces loopback Host validation in local mode and
+// checks a browser's Origin against the configured public origin.
+func (a *Access) AllowsMCPRequest(r *http.Request) bool {
+	origins := r.Header.Values("Origin")
+	if a.local {
+		return len(origins) <= 1 && a.localRequest(r)
+	}
+	if len(origins) == 0 {
+		return true
+	}
+	if len(origins) != 1 || origins[0] == "" {
+		return false
+	}
+	return origins[0] == a.origin
+}
+
 func (a *Access) localRequest(r *http.Request) bool {
 	peer, err := netip.ParseAddrPort(r.RemoteAddr)
 	if !a.local || err != nil || !peer.Addr().Unmap().IsLoopback() || r.Header.Get("Sec-Fetch-Site") == "cross-site" {

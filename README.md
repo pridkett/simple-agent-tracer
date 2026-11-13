@@ -81,6 +81,17 @@ Use the [proxy setup in the design](DESIGN.md#proxy-integration-setup) to config
 
 Install the optional integrations from [the agent setup instructions](integrations/README.md). Both use the proxy for model snapshots and billing. Enable agent tool payload capture independently.
 
+## Bulk model-call queries
+
+Query model responses, costs, and timings across a project with
+`POST /api/v1/projects/{project}/query`. Send structured filters or a read-only
+SQL `SELECT FROM model_calls`. Select `output_messages` to include captured
+model responses. Use `POST /api/v1/projects/{project}/query/export` for NDJSON.
+
+For agents, configure Streamable HTTP at
+`/api/v1/projects/{project}/mcp` with a project read bearer token and call
+`query_model_calls`. See the [query design and examples](QUERY-DESIGN.md).
+
 ## Verification
 
 ```sh
