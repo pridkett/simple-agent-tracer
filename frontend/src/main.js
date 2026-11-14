@@ -20,15 +20,17 @@ const routes = [
 ]
 
 const router = createRouter({ history: createWebHistory(), routes })
+const loginLocation = to => ({ name: 'login', query: { returnTo: to.fullPath } })
+
 router.beforeEach(async to => {
   await checkSession()
   if (to.name === 'login') return canBrowse.value ? '/' : true
-  return canBrowse.value || { name: 'login' }
+  return canBrowse.value || loginLocation(to)
 })
 
 unauthorized.addEventListener('session-required', () => {
   session.value = undefined
-  void router.replace({ name: 'login' })
+  void router.replace(loginLocation(router.currentRoute.value))
 })
 
 const app = createApp(App).use(router)

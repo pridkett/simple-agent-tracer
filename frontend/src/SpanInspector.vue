@@ -7,7 +7,7 @@ const props = defineProps({
   row: { type: Object, required: true },
   outsideTimeline: Boolean,
   linkedTo: Object,
-  traceUrl: String,
+  permalink: { type: String, required: true },
 })
 defineEmits(['close'])
 const span = computed(() => props.row.data)
@@ -31,6 +31,7 @@ function toggle(field, event) {
         <h2 class="field">Span details</h2>
         <p class="mt-1 break-words text-lg font-semibold">{{ span.name || span.id }}</p>
         <p class="mt-1 break-all font-mono text-xs text-gray-600 dark:text-gray-300">{{ span.id }}</p>
+        <RouterLink :to="permalink" class="link mt-2 inline-block text-xs">Span permalink</RouterLink>
       </div>
       <button type="button" class="btn-secondary px-2.5 py-1" aria-label="Close span details" @click="$emit('close')">Close</button>
     </header>
@@ -38,7 +39,7 @@ function toggle(field, event) {
       <p class="text-sm">{{ span.operation || span.kind }} · {{ statusLabel(span.status) }} · {{ elapsed(span.start, span.end) }}</p>
       <p v-if="span.statusMessage" class="break-words text-sm">{{ span.statusMessage }}</p>
       <p v-if="span.partial || span.truncated" class="text-sm text-amber-700 dark:text-amber-300">Partial or truncated capture</p>
-      <p v-if="outsideTimeline" class="text-sm">This span is outside the current timeline. <RouterLink :to="traceUrl" class="link">Open in trace</RouterLink></p>
+      <p v-if="outsideTimeline" class="text-sm">This span is outside the current timeline. <RouterLink :to="permalink" class="link">Open in trace</RouterLink></p>
       <p v-if="row.linkedModel" class="text-sm">Reported usage is counted on the linked proxy operation.</p>
       <p v-if="linkedTo" class="text-sm">Missing GenAI token counts can come from the <RouterLink :to="linkedTo" class="link">linked client span</RouterLink>.</p>
       <p v-if="row.conflictingExports" class="text-sm">Conflicting re-exports: {{ row.conflictingExports }}</p>
