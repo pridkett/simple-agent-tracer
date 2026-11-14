@@ -1,5 +1,13 @@
 <script setup>
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { session } from './session'
+
+const route = useRoute()
+const loginUrl = computed(() => {
+  const target = route.query.returnTo
+  return typeof target === 'string' ? '/auth/login?returnTo=' + encodeURIComponent(target) : '/auth/login'
+})
 
 function retry() {
   window.location.reload()
@@ -15,7 +23,7 @@ function retry() {
         <p v-else-if="session === null" role="alert" class="mt-2 text-sm text-gray-600 dark:text-gray-300">Unable to check sign-in status.</p>
         <p v-else class="mt-2 text-sm text-gray-600 dark:text-gray-300">Configure OIDC or open the tracer in local mode to use the web interface.</p>
       </div>
-      <a v-if="session?.oidc" href="/auth/login" class="btn-primary w-full py-3">Sign in with SSO</a>
+      <a v-if="session?.oidc" :href="loginUrl" class="btn-primary w-full py-3">Sign in with SSO</a>
       <button v-else-if="session === null" class="btn-secondary w-full py-3" @click="retry">Try again</button>
     </section>
   </main>

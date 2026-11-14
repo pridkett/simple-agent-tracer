@@ -19,6 +19,12 @@ With `TRACER_OIDC_ISSUER` unset, the browser opens as a local administrator with
 
 `GET /health` checks the process. `GET /ready` checks database connectivity. `GET /openapi.json` describes the query API, timestamp and token encodings, pagination, and the versioned JSON export format. The explorer supports the same filters as the API and keeps filters in the URL. For example, `?tool=search&status=STATUS_CODE_ERROR` finds sessions with a failed `search` span. A typed metadata exact match uses a JSON literal in `metadataValue`. Use `1.0` to match a double and `1` to match an integer.
 
+## Share a trace or span
+
+Open a trace and copy its URL, or use **Trace permalink** to link to the trace without selecting a span. Selecting a span in Activity or the span timeline updates the address bar, so you can share that view and use Back and Forward to move between selections. Use **Span permalink** in the inspector to link directly to that span in its trace from any session or turn. You can also right-click either permalink and copy its address.
+
+Anyone with access to the same tracer instance can open the link while the data is retained. If sign-in is required, the tracer opens the shared view after SSO.
+
 ## Configure deployment
 
 | Setting | Behavior |

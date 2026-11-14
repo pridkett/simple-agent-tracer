@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -240,6 +241,20 @@ func (a *Access) Status(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func browserReturnTo(raw string) string {
+	target, err := url.Parse(raw)
+	if err != nil || target.IsAbs() || target.Host != "" || strings.Contains(target.Path, "\\") {
+		return "/"
+	}
+
+	// Check both forms to restrict the callback to the local explorer.
+	if !strings.HasPrefix(target.EscapedPath()+"/", "/projects/") ||
+		!strings.HasPrefix(path.Clean(target.Path)+"/", "/projects/") {
+		return "/"
+	}
+	return target.String()
+}
+
 func (a *Access) Login(w http.ResponseWriter, r *http.Request) {
 	if a.oauth == nil {
 		http.NotFound(w, r)
@@ -249,6 +264,7 @@ func (a *Access) Login(w http.ResponseWriter, r *http.Request) {
 	a.session.Put(r.Context(), "state", state)
 	a.session.Put(r.Context(), "nonce", nonce)
 	a.session.Put(r.Context(), "verifier", verifier)
+	a.session.Put(r.Context(), "browserReturnTo", browserReturnTo(r.URL.Query().Get("returnTo")))
 	http.Redirect(w, r, a.oauth.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)), http.StatusSeeOther)
 }
 
@@ -261,6 +277,7 @@ func (a *Access) Callback(w http.ResponseWriter, r *http.Request) {
 	state := a.session.PopString(ctx, "state")
 	nonce := a.session.PopString(ctx, "nonce")
 	verifier := a.session.PopString(ctx, "verifier")
+	returnTo := a.session.PopString(ctx, "browserReturnTo")
 	if state == "" || nonce == "" || verifier == "" || subtle.ConstantTimeCompare([]byte(state), []byte(r.URL.Query().Get("state"))) != 1 {
 		http.Error(w, "invalid login state", http.StatusBadRequest)
 		return
@@ -301,7 +318,10 @@ func (a *Access) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.session.Put(ctx, "owner", true)
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	if returnTo == "" {
+		returnTo = "/"
+	}
+	http.Redirect(w, r, returnTo, http.StatusSeeOther)
 }
 
 func (a *Access) Logout(w http.ResponseWriter, r *http.Request) {

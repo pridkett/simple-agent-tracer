@@ -17,15 +17,14 @@ const isTrace = computed(() => kind.value === 'traces')
 const isTurn = computed(() => Boolean(route.params.turn))
 const timelinePath = computed(() => entityPath.value + (isTrace.value ? '/spans'
   : isTurn.value ? '/turns/' + route.params.turn : '/timeline'))
-const currentPath = computed(() => isTrace.value ? browserBase.value + '/traces/' + route.params.id : route.path)
+const tracePath = trace => browserBase.value + '/traces/' + trace
+const currentPath = computed(() => isTrace.value ? tracePath(route.params.id) : route.path)
 const cursor = computed(() => route.query.cursor)
 const turnCursor = computed(() => route.query.turnCursor)
 
 const detail = ref(null)
 const originalPage = ref({ items: [] })
 const focusedPage = ref(null)
-const page = computed(() => focusedPage.value || originalPage.value)
-const activityRows = computed(() => [...page.value.items, ...(page.value.parents || [])])
 const turns = ref({ items: [] })
 const error = ref('')
 const loading = ref(false)
@@ -36,29 +35,26 @@ const inspectorLoading = ref(false)
 
 const spanKey = (trace, span) => trace + '.' + span
 const rowKey = row => spanKey(row.trace, row.id)
+const requestedSpan = computed(() => route.params.span ? spanKey(route.params.id, route.params.span) : route.query.span)
 const selectedKey = computed(() => {
-  const value = route.params.span ? spanKey(route.params.id, route.params.span) : route.query.span
+  const value = requestedSpan.value
   return typeof value === 'string' && /^[0-9a-f]{32}\.[0-9a-f]{16}$/.test(value) ? value : ''
 })
+const focused = computed(() => focusedPage.value?.key === selectedKey.value)
+const page = computed(() => focused.value ? focusedPage.value.page : originalPage.value)
+const activityRows = computed(() => [...page.value.items, ...(page.value.parents || [])])
 const selectedInTimeline = computed(() => activityRows.value.find(row => rowKey(row) === selectedKey.value))
 const selected = computed(() => selectedInTimeline.value ||
   (outside.value && rowKey(outside.value) === selectedKey.value ? outside.value : null))
-const traceUrl = (trace, span) => ({
-  path: browserBase.value + '/traces/' + trace,
-  query: { span: spanKey(trace, span) },
-})
+const spanPermalink = (trace, span) => tracePath(trace) + '/spans/' + span
 const spanLocation = (trace, span) => ({
-  path: currentPath.value,
-  query: { ...route.query, span: spanKey(trace, span) },
+  path: isTrace.value ? spanPermalink(trace, span) : currentPath.value,
+  query: { ...route.query, span: isTrace.value ? undefined : spanKey(trace, span) },
 })
 const pageLocation = next => ({ path: currentPath.value, query: { ...route.query, span: undefined, cursor: next } })
 
 function closeInspector() {
-  router.push({ path: currentPath.value, query: { ...route.query, span: undefined } })
-}
-
-function firstPage() {
-  if (!cursor.value) focusedPage.value = null
+  router.push(pageLocation(cursor.value))
 }
 
 function reveal(key) {
@@ -111,7 +107,7 @@ watch([selectedKey, loading], async ([key, waiting], _, cleanup) => {
       const params = new URLSearchParams({ focus: key, includeParents: 'true' })
       const window = await request(timeline + '?' + params, { signal: abort.signal })
       if (abort.signal.aborted) return
-      focusedPage.value = window
+      focusedPage.value = { key, page: window }
     } catch (e) {
       if (abort.signal.aborted) return
       if (e.status !== 404) throw e
@@ -164,6 +160,7 @@ async function keep() {
         <p class="mt-1 break-all font-mono text-xs text-gray-600 dark:text-gray-300">{{ isTurn ? route.params.turn : detail.externalId || detail.id }}</p>
       </div>
       <div class="flex gap-2">
+        <RouterLink v-if="isTrace" :to="tracePath(route.params.id)" class="btn-secondary">Trace permalink</RouterLink>
         <button class="btn-secondary" :disabled="busy" @click="keep">{{ detail.kept ? 'Unkeep' : 'Keep' }}</button>
         <a :href="entityPath + '/export'" class="btn-secondary">Export JSON</a>
       </div>
@@ -178,7 +175,7 @@ async function keep() {
     </div>
 
 
-    <div class="detail-layout" :class="{ 'trace-layout': isTrace, 'has-inspector': selectedKey || isTrace }">
+    <div class="detail-layout" :class="{ 'trace-layout': isTrace, 'has-inspector': requestedSpan || isTrace }">
       <SpanTimeline :rows="activityRows" :trace="isTrace" :selected-key="selectedKey" :span-location="spanLocation">
         <template v-if="turns.items.length" #turns>
           <details class="border-b border-gray-200 px-4 py-2 text-sm dark:border-gray-700">
@@ -193,24 +190,25 @@ async function keep() {
             <RouterLink v-if="turns.nextCursor" :to="{ query: { ...route.query, turnCursor: turns.nextCursor } }" class="link mt-2 block text-xs">Next turns</RouterLink>
           </details>
         </template>
-        <template v-if="page.nextCursor || cursor || focusedPage" #pagination>
+        <template v-if="page.nextCursor || cursor || focused" #pagination>
           <nav aria-label="Span pagination" class="flex flex-wrap gap-3 border-t border-gray-200 px-4 py-2 text-xs dark:border-gray-700">
-            <RouterLink v-if="cursor || focusedPage" :to="pageLocation(undefined)" class="link" @click="firstPage">First page</RouterLink>
+            <RouterLink v-if="cursor || focused" :to="pageLocation(undefined)" class="link">First page</RouterLink>
             <RouterLink v-if="page.nextCursor" :to="pageLocation(page.nextCursor)" class="link">Next spans</RouterLink>
           </nav>
         </template>
       </SpanTimeline>
 
       <SpanInspector v-if="selected" :key="selectedKey" :row="selected" :outside-timeline="!selectedInTimeline"
-        :trace-url="traceUrl(selected.trace, selected.id)"
+        :permalink="spanPermalink(selected.trace, selected.id)"
         :linked-to="selected.usageFallbackSpanId ? spanLocation(selected.trace, selected.usageFallbackSpanId) : undefined"
         @close="closeInspector" />
-      <aside v-else-if="selectedKey || isTrace" id="span-inspector" class="card span-inspector p-4 text-sm" aria-label="Span details">
+      <aside v-else-if="requestedSpan || isTrace" id="span-inspector" class="card span-inspector p-4 text-sm" aria-label="Span details">
         <div class="flex items-start justify-between gap-2">
           <h2 class="font-semibold">Span details</h2>
-          <button v-if="selectedKey" type="button" class="link" @click="closeInspector">Close</button>
+          <button v-if="requestedSpan" type="button" class="link" @click="closeInspector">Close</button>
         </div>
-        <p v-if="inspectorError" role="alert" class="mt-2 text-red-700 dark:text-red-300">{{ inspectorError }}</p>
+        <p v-if="requestedSpan && !selectedKey" role="alert" class="mt-2 text-red-700 dark:text-red-300">Invalid span link.</p>
+        <p v-else-if="inspectorError" role="alert" class="mt-2 text-red-700 dark:text-red-300">{{ inspectorError }}</p>
         <p v-else-if="inspectorLoading" role="status" class="mt-2">Locating span…</p>
         <p v-else class="mt-2 text-gray-600 dark:text-gray-300">Select a span to inspect its details.</p>
       </aside>

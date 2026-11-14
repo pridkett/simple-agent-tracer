@@ -124,8 +124,9 @@ func TestOIDCAdministrator(t *testing.T) {
 			if !signedOut["oidc"] || signedOut["local"] || signedOut["signedIn"] {
 				t.Fatalf("unexpected signed-out status: %v", signedOut)
 			}
-			login := func(subject string, want int, validState bool) *httptest.ResponseRecorder {
-				res := request("GET", "/auth/login", "", nil, 303)
+			login := func(subject string, want int, validState bool, returnTo string) *httptest.ResponseRecorder {
+				params := url.Values{"returnTo": {returnTo}}
+				res := request("GET", "/auth/login?"+params.Encode(), "", nil, 303)
 				redirect, err := url.Parse(res.Header().Get("Location"))
 				if err != nil {
 					t.Fatal(err)
@@ -151,15 +152,31 @@ func TestOIDCAdministrator(t *testing.T) {
 				values := url.Values{"state": {state}, "code": {subject + ":" + nonce}}
 				return request("GET", "/auth/callback?"+values.Encode(), "", cookies[0], want)
 			}
-			login(tc.allowed, 400, false)
-			login(tc.denied, 403, true)
+			login(tc.allowed, 400, false, "")
+			login(tc.denied, 403, true, "")
 			for _, denied := range []string{"visitor", "wrong-case", "unverified-member", "bad-groups"} {
-				login(denied, 403, true)
+				login(denied, 403, true, "")
 			}
 			if tc.group != "" {
-				login("legacy-owner", 403, true)
+				login("legacy-owner", 403, true, "")
 			}
-			result := login(tc.allowed, 303, true)
+			const spanURL = "/projects/default/traces/01010101010101010101010101010101/spans/0202020202020202"
+			const sessionURL = "/projects/default/sessions/session?span=01010101010101010101010101010101.0202020202020202"
+			for _, tcURL := range []struct{ target, want string }{
+				{"", "/"},
+				{spanURL, spanURL},
+				{sessionURL, sessionURL},
+				{"https://example.org/projects/default/traces", "/"},
+				{"//example.org/projects/default/traces", "/"},
+				{"/projects/%5c%5cexample.org", "/"},
+				{"/projects/%2e%2e/auth/login", "/"},
+			} {
+				res := login(tc.allowed, 303, true, tcURL.target)
+				if got := res.Header().Get("Location"); got != tcURL.want {
+					t.Errorf("returnTo %q redirected to %q, want %q", tcURL.target, got, tcURL.want)
+				}
+			}
+			result := login(tc.allowed, 303, true, "")
 			cookies := result.Result().Cookies()
 			if len(cookies) != 1 {
 				t.Fatal("missing owner session cookie")
