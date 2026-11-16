@@ -86,6 +86,8 @@ Every minute the sweeper deletes up to 200 eligible traces. Eligibility follows 
 
 Use the [proxy setup in the design](DESIGN.md#proxy-integration-setup) to configure the OTLP HTTP exporter, a dedicated application key, and the application's capture allowlist. Set `TRACER_OTLP_AUTH_HEADER` to the full bearer header value. Set `X-Session-ID` in the client to keep proxy-only traffic grouped. The tracer correlates agent and proxy exports when a trusted incoming `traceparent` preserves ancestry and the proxy's application-scoped session digest matches the native session ID. Separate application keys can use the same client session ID without sharing their proxy sessions across applications.
 
+Select a `decision` span in Activity to inspect calls to `/v1/decisions` and `/v1/systemone`. With capture enabled in the proxy and tracer project, the inspector shows the input or state, questions and criteria, and the model's returned values, confidence, and probability distributions when available. Older spans that were exported without decision payloads show the available span metadata.
+
 Install the optional integrations from [the agent setup instructions](integrations/README.md). Both use the proxy for model snapshots and billing. Enable agent tool payload capture independently.
 
 ## Bulk model-call queries
