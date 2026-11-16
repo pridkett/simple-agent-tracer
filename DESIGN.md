@@ -59,7 +59,7 @@ Validate trace and span IDs, decode resource and scope records, and retain times
 | Conversation data | `gen_ai.input.messages`, `gen_ai.output.messages`, `gen_ai.system_instructions`, and OpenInference `llm.input_messages.*` and `llm.output_messages.*`. Preserve ordering and role. |
 | Attribution | `service.name` and other resource attributes, proxy team and app metadata, `user.id`, and the original producer metadata. Preserve the original types for API filters. |
 
-Persist typed source attributes subject to the project capture policy. Default to storing supplied text, instructions, and tool content with a 64 KiB per-span normalized content cap. Flag partial or truncated capture, preserve original proxy flags, and render captured content as data. Keep binary content out of the initial data path. With project capture disabled, strip recognized message, prompt, and tool bodies before persisting them, including their source-attribute copies. Apply request and attribute limits to arbitrary metadata too. Never log exporter credentials or request bodies.
+Persist typed source attributes subject to the project capture policy. Default to storing supplied text, instructions, and tool content with a 16 MiB per-span normalized content cap. Flag partial or truncated capture, preserve original proxy flags, and render captured content as data. Keep binary content out of the initial data path. With project capture disabled, strip recognized message, prompt, and tool bodies before persisting them, including their source-attribute copies. Apply request and attribute limits to arbitrary metadata too. Never log exporter credentials or request bodies.
 
 ### Storage contract
 
