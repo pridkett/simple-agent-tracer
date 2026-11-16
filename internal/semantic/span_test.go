@@ -8,7 +8,7 @@ import (
 	otlp "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
-// simple-llm-proxy exports each direction as GenAI and Langfuse attributes.
+// Older simple-llm-proxy releases export each direction as GenAI and Langfuse attributes.
 func TestNormalizeKeepsLargeProxyCapture(t *testing.T) {
 	messages := `[{"role":"user","parts":[{"type":"text","content":"` + strings.Repeat("x", 1<<20) + `"}]}]`
 	str := func(key, value string) *common.KeyValue {
@@ -45,5 +45,21 @@ func TestNormalizeFlagsContentOverBudget(t *testing.T) {
 	out, ok := Normalize(span, nil, nil, [2]string{}, "proxy", 1, true)
 	if !ok || !out.Truncated || out.Attributes["input.value"] != nil {
 		t.Fatalf("ok=%v truncated=%v kept=%v", ok, out.Truncated, out.Attributes["input.value"] != nil)
+	}
+}
+
+func TestNormalizeReadsProxyApplicationAttributes(t *testing.T) {
+	str := func(key, value string) *common.KeyValue {
+		return &common.KeyValue{Key: key, Value: &common.AnyValue{Value: &common.AnyValue_StringValue{StringValue: value}}}
+	}
+	for name, attrs := range map[string][]*common.KeyValue{
+		"semantic conventions": {str("llmproxy.application", "canyon"), str("llmproxy.application_id", "7")},
+		"langfuse metadata":    {str("langfuse.trace.metadata.application_name", "canyon"), str("langfuse.trace.metadata.application_id", "7")},
+	} {
+		span := &otlp.Span{TraceId: []byte(strings.Repeat("\x01", 16)), SpanId: []byte(strings.Repeat("\x02", 8)), Attributes: attrs}
+		out, ok := Normalize(span, nil, nil, [2]string{}, "proxy", 1, true)
+		if !ok || out.Application != "canyon" || out.ProxyApp != "7" {
+			t.Errorf("%s: application=%q id=%q", name, out.Application, out.ProxyApp)
+		}
 	}
 }

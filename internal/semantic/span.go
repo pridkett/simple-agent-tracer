@@ -14,8 +14,8 @@ import (
 	otlp "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
-// ContentLimit holds simple-llm-proxy's largest capture (4 MiB per direction),
-// which it exports as both GenAI and Langfuse attributes.
+// ContentLimit holds simple-llm-proxy's largest capture (4 MiB per direction)
+// with room for producers that repeat content under several keys.
 const ContentLimit = 16 << 20
 const attributeLimit = 8 << 20
 const metadataLimit = 96 << 10
@@ -338,8 +338,8 @@ func Normalize(s *otlp.Span, r *resource.Resource, scope *common.Instrumentation
 	out.RequestModel = a.str("gen_ai.request.model", "llm.model_name")
 	out.ResponseModel = a.str("gen_ai.response.model")
 	out.Tool = a.str("gen_ai.tool.name", "tool.name")
-	out.Application = a.str("langfuse.trace.metadata.application_name", "llmproxy.application")
-	out.ProxyApp = a.str("langfuse.trace.metadata.application_id")
+	out.Application = a.str("llmproxy.application", "langfuse.trace.metadata.application_name")
+	out.ProxyApp = a.str("llmproxy.application_id", "langfuse.trace.metadata.application_id")
 	out.ProxyRequest = a.str("llmproxy.request_id")
 	out.Aliases = map[string]string{}
 	for _, key := range []string{"gen_ai.conversation.id", "session.id", "langfuse.session.id"} {
