@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { elapsed, statusLabel } from './api'
+import DecisionDetails from './DecisionDetails.vue'
 import JsonPayload from './JsonPayload.vue'
 
 const props = defineProps({
@@ -43,6 +44,7 @@ function toggle(field, event) {
       <p v-if="row.linkedModel" class="text-sm">Reported usage is counted on the linked proxy operation.</p>
       <p v-if="linkedTo" class="text-sm">Missing GenAI token counts can come from the <RouterLink :to="linkedTo" class="link">linked client span</RouterLink>.</p>
       <p v-if="row.conflictingExports" class="text-sm">Conflicting re-exports: {{ row.conflictingExports }}</p>
+      <DecisionDetails v-if="span.operation === 'decision'" :span="span" />
       <template v-for="(label, field) in fields" :key="field">
         <details v-if="field === 'raw' || span[field] != null" class="border-t border-gray-200 pt-3 dark:border-gray-700"
           :open="openFields.has(field)" @toggle="toggle(field, $event)">
