@@ -19,10 +19,10 @@ import (
 )
 
 const (
-	compressedLimit    = 8 << 20
-	decodedLimit       = 16 << 20
+	compressedLimit    = 32 << 20
+	decodedLimit       = 64 << 20
 	batchLimit         = 2000
-	retainedBatchLimit = 48 << 20
+	retainedBatchLimit = 192 << 20
 	mediaType          = "application/x-protobuf"
 )
 

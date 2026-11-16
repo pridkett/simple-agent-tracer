@@ -14,8 +14,10 @@ import (
 	otlp "go.opentelemetry.io/proto/otlp/trace/v1"
 )
 
-const ContentLimit = 64 << 10
-const attributeLimit = 64 << 10
+// ContentLimit holds simple-llm-proxy's largest capture (4 MiB per direction),
+// which it exports as both GenAI and Langfuse attributes.
+const ContentLimit = 16 << 20
+const attributeLimit = 8 << 20
 const metadataLimit = 96 << 10
 
 type Attributes map[string]any
