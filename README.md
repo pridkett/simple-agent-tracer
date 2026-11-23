@@ -2,7 +2,15 @@
 
 [Project site and quickstart](https://pridkett.github.io/simple-agent-tracer/)
 
-A self-hosted OpenTelemetry trace viewer for agent conversations. Open a session to read its transcript and inspect turns, model calls, tool activity, token counts, and reported cost. Open a trace to inspect the span tree and waterfall, including traffic without a session.
+A lightweight, self-hosted OpenTelemetry trace viewer for homelabbers,
+developers, and hobbyists. Run it on your laptop to debug an agent turn or
+collect traces from several agents on a homelab server. Read conversations,
+inspect model calls and tool activity, and see timing, token counts, and
+reported cost.
+
+The Go binary includes the browser UI and uses SQLite by default. Every feature
+is available in the self-hosted build without a paid tier. See the
+[footprint benchmark](scripts/benchmark/README.md) for measured resource use.
 
 ## Run locally
 
@@ -114,3 +122,7 @@ TRACER_TEST_POSTGRES='postgres://USER:PASSWORD@127.0.0.1:5432/DB?sslmode=disable
 The parity test creates and drops an isolated PostgreSQL schema in the test database. It covers migrations, child-first ingestion, replay, parallel writes, typed child-span filters, capture controls, project credentials, pagination, export, and retention. A TLS fixture exercises OIDC group-based sign-in, PKCE, state, nonce, and origin enforcement.
 
 See [the benchmark](scripts/benchmark/README.md) for the 100,000-span fixture, commands, and results.
+
+## License
+
+Licensed under the [BSD 3-Clause License](LICENSE).

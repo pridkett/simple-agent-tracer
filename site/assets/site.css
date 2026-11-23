@@ -89,6 +89,12 @@ h1 em { color: var(--aqua); font-style: normal; }
 figcaption { color: var(--muted); font-size: .875rem; }
 .waterfall figcaption { margin-top: 1rem; padding-top: .85rem; border-top: 1px solid var(--line); }
 
+.deployment { border-bottom: 1px solid var(--line); background: var(--panel); }
+.deployment-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 1.5rem 2rem; padding-block: clamp(2.5rem, 5vw, 4.5rem); }
+.deployment h2 { font-size: clamp(2.1rem, 3.7vw, 3.25rem); }
+.deployment p { margin-top: .7rem; color: var(--muted); }
+.deployment article { border-top: 1px solid #5a747d; padding-top: 1rem; }
+
 .section { padding-block: clamp(3.5rem, 8vw, 7rem); }
 .section-heading { display: grid; grid-template-columns: 1.35fr 1fr; align-items: end; gap: 1rem 2rem; margin-bottom: 1.7rem; }
 .section-heading p, .features p, .start p:not(.label), .companion p { color: var(--muted); }
@@ -115,9 +121,13 @@ pre { margin: 0; overflow: auto; padding: 1rem; line-height: 1.8; }
 .companion h2 { font-size: clamp(1.9rem, 3.8vw, 3rem); }
 .companion p { max-width: 34rem; }
 .companion .actions { max-width: 100%; margin-top: 0; }
-.footer { border-top: 1px solid var(--line); color: var(--muted); font-size: .875rem; }
+.footer { flex-wrap: wrap; border-top: 1px solid var(--line); color: var(--muted); font-size: .875rem; }
+
+.footer-links { display: flex; flex-wrap: wrap; gap: .5rem 1.3rem; }
 
 @media (max-width: 900px) {
+  .deployment-grid { grid-template-columns: 1fr 1fr; }
+  .deployment-grid > div { grid-column: 1 / -1; }
   .hero-grid { grid-template-columns: 1fr; }
   h1 { max-width: 13ch; }
   .waterfall { max-width: 41rem; }
@@ -126,7 +136,7 @@ pre { margin: 0; overflow: auto; padding: 1rem; line-height: 1.8; }
 @media (max-width: 690px) {
   .wrap { width: calc(100% - 2rem); }
   .navigation { flex-wrap: wrap; }
-  .section-heading, .features, .start-grid { grid-template-columns: 1fr; }
+  .deployment-grid, .section-heading, .features, .start-grid { grid-template-columns: 1fr; }
   .hero-grid { padding-block: 3.1rem; }
   h1 { font-size: clamp(3.15rem, 12vw, 4.8rem); }
   .waterfall { padding: .9rem; }
