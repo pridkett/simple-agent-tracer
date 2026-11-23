@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Simple Agent Tracer is a self-hosted OpenTelemetry explorer for agent sessions, model calls, and tool activity.">
+  <meta name="theme-color" content="#0d151c">
+  <title>Simple Agent Tracer · Follow the whole run</title>
+  <link rel="icon" href="assets/mark.png" type="image/png">
+  <link rel="stylesheet" href="assets/site.css">
+  <script src="assets/copy.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="wrap navigation">
+    <a class="brand" href="./"><i aria-hidden="true"></i> Simple Agent Tracer</a>
+    <nav aria-label="Main navigation">
+      <a href="#explore">Explore</a>
+      <a href="#start">Quickstart</a>
+      <a href="https://github.com/pridkett/simple-agent-tracer">GitHub</a>
+    </nav>
+  </header>
+  <main id="main">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <p class="label">Self-hosted OpenTelemetry explorer</p>
+          <h1>Follow the <em>whole run.</em></h1>
+          <p class="intro">Read the conversation, then open the spans behind it. See which models and tools ran, where time went, and what each call reported.</p>
+          <div class="actions">
+            <a class="button primary" href="#start">Run locally</a>
+            <a class="button" href="#explore">See the explorer</a>
+          </div>
+        </div>
+        <figure class="waterfall">
+          <div class="window-head"><strong>catalog-helper</strong><span>Synthetic trace</span></div>
+          <div class="ruler" aria-hidden="true"><span>0 ms</span><span>600 ms</span><span>1.2 s</span><span>1.8 s</span></div>
+          <ol class="spans">
+            <li>
+              <div><strong>Agent turn</strong><span>1,800 ms</span></div>
+              <div class="track"><i class="agent" aria-hidden="true"></i></div>
+            </li>
+            <li class="nested">
+              <div><strong>OpenAI / gpt-5.4-mini</strong><span>490 ms</span></div>
+              <div class="track"><i class="model first" aria-hidden="true"></i></div>
+            </li>
+            <li class="nested">
+              <div><strong>lookup_catalog</strong><span>210 ms</span></div>
+              <div class="track"><i class="tool" aria-hidden="true"></i></div>
+            </li>
+            <li class="nested">
+              <div><strong>Anthropic / claude-sonnet-4-6</strong><span>925 ms</span></div>
+              <div class="track"><i class="model last" aria-hidden="true"></i></div>
+            </li>
+          </ol>
+          <figcaption>One agent turn with two model calls and a tool lookup.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="wrap section" id="explore">
+      <div class="section-heading">
+        <h2>From transcript to span.</h2>
+        <p>Use the session view to read the exchange. Open a trace to compare span timing and inspect a single call.</p>
+      </div>
+      <figure class="capture">
+        <a href="assets/trace-explorer.webp" aria-label="Open the full-size trace explorer screenshot">
+          <img src="assets/trace-explorer.webp" alt="Trace explorer showing model and tool spans beside the selected OpenAI span’s details." width="1400" height="780" loading="lazy" decoding="async">
+        </a>
+        <figcaption>Trace explorer with synthetic telemetry. Open the image for a closer look.</figcaption>
+      </figure>
+      <div class="features">
+        <article>
+          <h3>Find the run that matters</h3>
+          <p>Filter sessions and traces by model, tool, status, and metadata. Share a link to a specific trace or span.</p>
+        </article>
+        <article>
+          <h3>Inspect a single call</h3>
+          <p>Read captured messages, tool inputs and outputs, and span attributes alongside durations, tokens, and reported cost.</p>
+        </article>
+        <article>
+          <h3>Manage capture and retention</h3>
+          <p>Give exporters project-scoped keys, choose whether to capture content, and keep selected traces beyond their retention window.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="start" id="start">
+      <div class="wrap start-grid">
+        <div>
+          <p class="label">Quickstart</p>
+          <h2>Point an exporter at it.</h2>
+          <p>Build with Go 1.26 and Node.js 22 or later. Open <code>127.0.0.1:4318</code> after starting the tracer.</p>
+          <p>Set your OTLP exporter to HTTP/protobuf and send traces to <code>http://127.0.0.1:4318/v1/traces</code>.</p>
+          <a class="text-link" href="https://github.com/pridkett/simple-agent-tracer#configure-deployment">Read the deployment guide</a>
+        </div>
+        <div class="code-box">
+          <div class="code-head"><span>Terminal</span><button type="button" data-copy hidden>Copy</button></div>
+          <pre tabindex="0"><code>git clone https://github.com/pridkett/simple-agent-tracer.git
+cd simple-agent-tracer
+npm --prefix frontend ci
+npm --prefix frontend run build
+CGO_ENABLED=0 go build -tags frontend -o tracer ./cmd/tracer
+./tracer</code></pre>
+          <p class="copy-status" role="status"></p>
+        </div>
+      </div>
+    </section>
+    <section class="wrap companion">
+      <div>
+        <h2>Trace requests from the proxy.</h2>
+        <p>Connect Simple LLM Proxy over OTLP to bring model requests and usage into the same explorer as your agent’s tool calls.</p>
+      </div>
+      <div class="actions">
+        <a class="button primary" href="https://github.com/pridkett/simple-agent-tracer/blob/main/DESIGN.md#proxy-integration-setup">Connect the proxy</a>
+        <a class="button" href="https://pridkett.github.io/simple-llm-proxy/">Simple LLM Proxy</a>
+      </div>
+    </section>
+  </main>
+  <footer class="wrap footer">
+    <span>Simple Agent Tracer</span>
+    <a href="https://github.com/pridkett/simple-agent-tracer">Source on GitHub</a>
+  </footer>
+</body>
+</html>
