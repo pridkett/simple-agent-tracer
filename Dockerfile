@@ -21,6 +21,7 @@ RUN apk add --no-cache ca-certificates
 
 FROM scratch
 COPY --from=backend /out/tracer /tracer
+COPY LICENSE /LICENSE
 COPY --from=backend --chown=65532:65532 /out/data/ /data/
 COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 USER 65532:65532
