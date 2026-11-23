@@ -1,5 +1,7 @@
 # Simple Agent Tracer
 
+[Project site and quickstart](https://pridkett.github.io/simple-agent-tracer/)
+
 A self-hosted OpenTelemetry trace viewer for agent conversations. Open a session to read its transcript and inspect turns, model calls, tool activity, token counts, and reported cost. Open a trace to inspect the span tree and waterfall, including traffic without a session.
 
 ## Run locally
