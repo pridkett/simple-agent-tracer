@@ -414,8 +414,13 @@ func (a *API) spans(kind string, turnDetail bool) http.HandlerFunc {
 			respond(w, 200, page)
 			return
 		}
-		transcript := query.NewTranscript()
-		if (after != nil || focus != "") && len(page.Items) > 0 {
+		agentEventsOnly, err := a.Store.AgentTranscript(r.Context(), p.ID, e.ID)
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		transcript := query.NewTranscript(agentEventsOnly)
+		if !agentEventsOnly && (after != nil || focus != "") && len(page.Items) > 0 {
 			priorPosition := &page.Items[0].Position
 			prior, err := a.Store.PrecedingModel(r.Context(), p.ID, e.ID, turn, priorPosition)
 			if err != nil {
