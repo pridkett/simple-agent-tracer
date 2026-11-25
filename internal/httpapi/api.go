@@ -57,6 +57,8 @@ func New(store *storage.Store, access *auth.Access, ui fs.FS, openapi []byte) ht
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(openapi)
 	})
+	r.HandleFunc(auth.SharedMCPPath, a.modelMCP(true))
+	r.Get(auth.ResourceMetadataPrefix+auth.SharedMCPPath, a.queryResourceMetadata)
 	r.Get(auth.ResourceMetadataPrefix+"/api/v1/projects/{project}/mcp", a.queryResourceMetadata)
 	r.Get("/auth/status", access.Status)
 	r.Get("/auth/login", access.Login)
@@ -76,7 +78,7 @@ func New(store *storage.Store, access *auth.Access, ui fs.FS, openapi []byte) ht
 			r.Post("/retention/keep", a.keep)
 			r.Post("/query", a.modelQuery)
 			r.Post("/query/export", a.modelExport)
-			r.HandleFunc("/mcp", a.modelMCP())
+			r.HandleFunc("/mcp", a.modelMCP(false))
 			r.Get("/metadata/keys", a.metadata(false))
 			r.Get("/metadata/values", a.metadata(true))
 			for _, kind := range []string{"traces", "sessions"} {

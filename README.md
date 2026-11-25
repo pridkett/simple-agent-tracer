@@ -45,7 +45,8 @@ Anyone with access to the same tracer instance can open the link while the data 
 | `TRACER_AUTH_MODE` | `auto` uses local access for loopback IP binds without OIDC. `authenticated` requires a read credential or OIDC on any bind and authenticates every ingest request. `local` requires a loopback IP bind and an unset OIDC issuer. |
 | `TRACER_CREDENTIALS` | JSON array of deployment-managed bearer credentials. Each token needs at least 24 characters. Give each ingest token a project and source. Give each read token a project. OIDC deployments can create ingest keys in the UI without setting this variable. |
 | `TRACER_OIDC_ADMIN_GROUP` | Exact group name from the verified OIDC ID token. Defaults to `admin`, matching the proxy. |
-| `TRACER_QUERY_OAUTH` | Set to `true` to accept project-bound OAuth access tokens for MCP and bulk queries. Requires OIDC configuration. Defaults to `false`. |
+| `TRACER_QUERY_OAUTH` | Set to `true` to accept OAuth access tokens for MCP and project-bound bulk queries. Requires OIDC configuration. Defaults to `false`. |
+| `TRACER_QUERY_OAUTH_PROJECTS` | Shared MCP grants keyed by OAuth subject, e.g. `{"user-sub":["default","jimbo"]}`. An unlisted subject sees no projects. Use `["*"]` for all current and future projects. |
 
 For PostgreSQL, give the database role permission to create the schema objects. Startup applies versioned migrations. The tracer uses at most 10 connections per process. Use a TLS DSN such as `sslmode=verify-full` for network deployments. Changing the DSN starts the tracer against the selected database. SQLite files and PostgreSQL databases are independent.
 
@@ -107,10 +108,11 @@ Query model responses, costs, and timings across a project with
 SQL `SELECT FROM model_calls`. Select `output_messages` to include captured
 model responses. Use `POST /api/v1/projects/{project}/query/export` for NDJSON.
 
-For agents, configure Streamable HTTP at
-`/api/v1/projects/{project}/mcp` with a project read bearer token and call
-`query_model_calls`. See the [query design and examples](QUERY-DESIGN.md)
-and the [Pocket ID OAuth setup](QUERY-OAUTH.md) for ChatGPT and Claude Desktop.
+Connect an agent to `/api/v1/mcp` over Streamable HTTP. Call `list_projects`
+to see the slugs your credential can read, then pass one as `project` to
+`query_model_calls`. Project-specific MCP URLs also accept queries with the
+project selected by the URL. See the [query examples](QUERY-DESIGN.md)
+and [Pocket ID OAuth setup for Codex, ChatGPT, and Claude Desktop](QUERY-OAUTH.md).
 
 ## Verification
 

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -46,6 +47,7 @@ func TestQueryOAuth(t *testing.T) {
 	})
 	ctx := oidc.ClientContext(t.Context(), idp.Client())
 	config := auth.OIDCConfig{Issuer: idp.URL, Client: "browser-client", Callback: origin + "/auth/callback", QueryOAuth: true}
+	config.QueryOAuthProjects = `{"pocket-id-user":["other","not-created"],"operator":["*"],"both":["default","other"]}`
 	credentials := fmt.Sprintf(`[{"token":%q,"access":"read","project":"default"}]`, readerToken)
 	access, _, err := auth.New(ctx, false, credentials, config)
 	if err != nil {
@@ -158,12 +160,79 @@ func TestQueryOAuth(t *testing.T) {
 			}
 		})
 	}
+	t.Run("shared MCP", func(t *testing.T) {
+		const path = "/api/v1/mcp"
+		const sharedResource = origin + path
+		meta := readJSON[auth.QueryResourceMetadata](t, request("GET", auth.ResourceMetadataPrefix+path, "", "", 200))
+		if meta.Resource != sharedResource || !slices.Equal(meta.ScopesSupported, []string{auth.QueryReadScope}) {
+			t.Fatalf("shared metadata: %+v", meta)
+		}
+		challenge := request("POST", path, "", list, 401).Header().Get("WWW-Authenticate")
+		if challenge != `Bearer resource_metadata="`+origin+auth.ResourceMetadataPrefix+path+`", scope="traces:read"` {
+			t.Fatalf("shared challenge: %s", challenge)
+		}
+		sharedToken := func(subject string) string {
+			return sign("at+jwt", map[string]any{"aud": sharedResource, "sub": subject})
+		}
+		user := sharedToken("pocket-id-user")
+		request("POST", path, token, list, 401)
+		request("POST", mcpPath, user, list, 401)
+		request("POST", root+"/query", user, requestBody, 401)
+		request("POST", path, sign("at+jwt", map[string]any{"aud": sharedResource, "scope": "openid"}), list, 403)
+		tools := request("POST", path, user, list, 200).Body.String()
+		if !strings.Contains(tools, `"name":"list_projects"`) || !strings.Contains(tools, `"required":["project"]`) {
+			t.Fatalf("unexpected shared tool catalog: %s", tools)
+		}
+
+		const listProjects = `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_projects","arguments":{}}}`
+		for _, tc := range []struct {
+			name, token string
+			want        []string
+		}{
+			{"one project", user, []string{"other"}},
+			{"multiple projects", sharedToken("both"), []string{"default", "other"}},
+			{"all projects", sharedToken("operator"), []string{"default", "other"}},
+			{"no grants", sharedToken("unknown"), []string{}},
+			{"static credential", readerToken, []string{"default"}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				var rpc struct {
+					Result struct{ StructuredContent struct{ Projects []string } }
+				}
+				if err := json.Unmarshal(request("POST", path, tc.token, listProjects, 200).Body.Bytes(), &rpc); err != nil {
+					t.Fatal(err)
+				}
+				got := rpc.Result.StructuredContent.Projects
+				if got == nil || !slices.Equal(got, tc.want) {
+					t.Fatalf("listed projects %v, want %v", got, tc.want)
+				}
+			})
+		}
+		projectCall := func(slug string) string {
+			return strings.Replace(call, `"arguments":{`, `"arguments":{"project":`+fmt.Sprintf("%q", slug)+`,`, 1)
+		}
+		for _, tc := range []struct{ path, token, call, want string }{
+			{path, user, projectCall("other"), `"rows":[]`},
+			{path, user, projectCall("default"), "project unavailable"},
+			{path, user, projectCall("absent"), "project unavailable"},
+			{path, sharedToken("unknown"), projectCall("other"), "project unavailable"},
+			{path, readerToken, projectCall("other"), "project unavailable"},
+			{path, user, call, "project is required"},
+			{mcpPath, token, projectCall("other"), "invalid query arguments"},
+		} {
+			if body := request("POST", tc.path, tc.token, tc.call, 200).Body.String(); !strings.Contains(body, tc.want) {
+				t.Fatalf("unexpected query result: %s, want %s", body, tc.want)
+			}
+		}
+	})
 	config.QueryOAuth = false
 	disabled, _, err := auth.New(ctx, false, credentials, config)
 	if err != nil {
 		t.Fatal(err)
 	}
 	handler = httpapi.New(store, disabled, nil, nil)
+	request("GET", auth.ResourceMetadataPrefix+auth.SharedMCPPath, "", "", 404)
+	request("POST", auth.SharedMCPPath, token, list, 401)
 	request("GET", metadataPath, "", "", 404)
 	request("POST", root+"/query", token, requestBody, 401)
 }
