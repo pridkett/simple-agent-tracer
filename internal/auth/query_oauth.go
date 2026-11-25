@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -15,6 +16,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
+const SharedMCPPath = "/api/v1/mcp"
 const QueryReadScope = "traces:read"
 const ResourceMetadataPrefix = "/.well-known/oauth-protected-resource"
 
@@ -26,11 +28,28 @@ var accessTokenAlgorithms = []jose.SignatureAlgorithm{
 }
 
 type queryOAuth struct {
-	issuer, origin string
-	verifier       *oidc.IDTokenVerifier
+	issuer, origin    string
+	verifier          *oidc.IDTokenVerifier
+	projectsBySubject map[string][]string
 }
 
-func newQueryOAuth(ctx context.Context, provider *oidc.Provider, issuer, origin string) (*queryOAuth, error) {
+func newQueryOAuth(ctx context.Context, provider *oidc.Provider, issuer, origin, projectGrants string) (*queryOAuth, error) {
+	var projects map[string][]string
+	if projectGrants != "" {
+		if err := json.Unmarshal([]byte(projectGrants), &projects); err != nil || projects == nil {
+			return nil, errors.New("TRACER_QUERY_OAUTH_PROJECTS must map subjects to arrays of project slugs")
+		}
+		for subject, slugs := range projects {
+			if strings.TrimSpace(subject) == "" || slugs == nil {
+				return nil, errors.New("TRACER_QUERY_OAUTH_PROJECTS requires a subject and project list for every entry")
+			}
+			for _, slug := range slugs {
+				if slug != "*" && !projectSlug.MatchString(slug) {
+					return nil, errors.New("TRACER_QUERY_OAUTH_PROJECTS contains an invalid project slug")
+				}
+			}
+		}
+	}
 	var discovery struct {
 		JWKS string `json:"jwks_uri"`
 	}
@@ -51,8 +70,8 @@ func newQueryOAuth(ctx context.Context, provider *oidc.Provider, issuer, origin 
 	for _, algorithm := range accessTokenAlgorithms {
 		algorithms = append(algorithms, string(algorithm))
 	}
-	return &queryOAuth{issuer: issuer, origin: origin, verifier: provider.VerifierContext(oidc.ClientContext(ctx, &client), &oidc.Config{
-		// The expected audience is the URL of the requested project.
+	return &queryOAuth{issuer: issuer, origin: origin, projectsBySubject: projects, verifier: provider.VerifierContext(oidc.ClientContext(ctx, &client), &oidc.Config{
+		// The expected audience is the canonical MCP URL for the requested route.
 		SkipClientIDCheck:    true,
 		SupportedSigningAlgs: algorithms,
 	})}, nil
@@ -73,10 +92,13 @@ type QueryResourceMetadata struct {
 func (a *Access) QueryOAuthEnabled() bool { return a.queryOAuth != nil }
 
 func (a *Access) QueryResource(project string) (QueryResourceMetadata, string, bool) {
-	if !a.QueryOAuthEnabled() || !projectSlug.MatchString(project) {
+	if !a.QueryOAuthEnabled() || (project != "" && !projectSlug.MatchString(project)) {
 		return QueryResourceMetadata{}, "", false
 	}
-	path := "/api/v1/projects/" + project + "/mcp"
+	path := SharedMCPPath
+	if project != "" {
+		path = "/api/v1/projects/" + project + "/mcp"
+	}
 	return QueryResourceMetadata{
 		Resource:               a.queryOAuth.origin + path,
 		AuthorizationServers:   []string{a.queryOAuth.issuer},
@@ -85,20 +107,20 @@ func (a *Access) QueryResource(project string) (QueryResourceMetadata, string, b
 	}, a.queryOAuth.origin + ResourceMetadataPrefix + path, true
 }
 
-// CheckQueryOAuth returns the HTTP authorization status for the supplied
+// CheckQueryOAuth returns the verified subject and HTTP authorization status for the supplied
 // resource. The caller gets the resource from QueryResource for the route.
-func (a *Access) CheckQueryOAuth(r *http.Request, resource string) int {
+func (a *Access) CheckQueryOAuth(r *http.Request, resource string) (string, int) {
 	raw, ok := bearer(r)
 	if a.queryOAuth == nil || !ok || len(r.Header.Values("Authorization")) != 1 || len(raw) > 16<<10 {
-		return http.StatusUnauthorized
+		return "", http.StatusUnauthorized
 	}
 	jws, err := jose.ParseSignedCompact(raw, accessTokenAlgorithms)
 	if err != nil || len(jws.Signatures) != 1 {
-		return http.StatusUnauthorized
+		return "", http.StatusUnauthorized
 	}
 	typ, _ := jws.Signatures[0].Protected.ExtraHeaders["typ"].(string)
 	if !strings.EqualFold(typ, "at+jwt") && !strings.EqualFold(typ, "application/at+jwt") {
-		return http.StatusUnauthorized
+		return "", http.StatusUnauthorized
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -106,15 +128,20 @@ func (a *Access) CheckQueryOAuth(r *http.Request, resource string) int {
 	token, err := a.queryOAuth.verifier.Verify(ctx, raw)
 	if err != nil || token.Issuer != a.queryOAuth.issuer || token.Subject == "" ||
 		!queryAudience(token.Audience, resource, a.queryOAuth.issuer) || !token.Expiry.After(time.Now()) {
-		return http.StatusUnauthorized
+		return "", http.StatusUnauthorized
 	}
 	var claims struct {
 		Scope string `json:"scope"`
 	}
 	if err := token.Claims(&claims); err != nil || !slices.Contains(strings.Fields(claims.Scope), QueryReadScope) {
-		return http.StatusForbidden
+		return "", http.StatusForbidden
 	}
-	return http.StatusOK
+	return token.Subject, http.StatusOK
+}
+
+// SharedQueryProjects returns the local grants for a verified access-token subject.
+func (a *Access) SharedQueryProjects(subject string) []string {
+	return a.queryOAuth.projectsBySubject[subject]
 }
 
 func queryAudience(audience []string, resource, issuer string) bool {

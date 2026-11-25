@@ -243,6 +243,7 @@ func TestModelQueryMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.call("POST", root+"/mcp", proxyToken, "{}", 401)
+	f.call("POST", auth.SharedMCPPath, proxyToken, "{}", 401)
 	f.call("POST", "/api/v1/projects/other/mcp", readerToken, "{}", 404)
 	badOrigin := httptest.NewRequest("POST", "http://localhost"+root+"/mcp", strings.NewReader("{}"))
 	badOrigin.Header.Set("Origin", "https://example.com")
@@ -266,36 +267,55 @@ func TestModelQueryMCP(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	client := mcp.NewClient(&mcp.Implementation{Name: "tracer-test", Version: "1.0.0"}, nil)
-	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{
-		Endpoint: server.URL + root + "/mcp", DisableStandaloneSSE: true,
-		HTTPClient: &http.Client{Transport: authenticatedMCPTransport{}},
-	}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer session.Close()
-	tools, err := session.ListTools(ctx, nil)
-	if err != nil || len(tools.Tools) != 1 || tools.Tools[0].Name != "query_model_calls" || !tools.Tools[0].Annotations.ReadOnlyHint {
-		t.Fatalf("unexpected tool discovery: %+v, %v", tools, err)
-	}
-	input := map[string]any{
-		"from": "2026-01-01T00:00:00Z", "to": "2026-01-02T00:00:00Z", "select": []string{"trace_id"},
-		"filters": map[string]any{"metadataKey": "rank", "metadataValue": int64(9007199254740993)},
-	}
-	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "query_model_calls", Arguments: input})
-	if err != nil || result.IsError {
-		raw, _ := json.Marshal(result)
-		t.Fatalf("unexpected MCP result: %s, %v", raw, err)
-	}
-	raw, err := json.Marshal(result.StructuredContent)
-	if err != nil || !strings.Contains(string(raw), strings.Repeat("01", 16)) {
-		t.Fatalf("unexpected structured result: %s, %v", raw, err)
-	}
-	input["limit"] = 51
-	result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "query_model_calls", Arguments: input})
-	if err != nil || !result.IsError {
-		t.Fatalf("unexpected MCP result for invalid limit: %+v, %v", result, err)
+	for _, path := range []string{root + "/mcp", auth.SharedMCPPath} {
+		t.Run(path, func(t *testing.T) {
+			client := mcp.NewClient(&mcp.Implementation{Name: "tracer-test", Version: "1.0.0"}, nil)
+			session, err := client.Connect(ctx, &mcp.StreamableClientTransport{
+				Endpoint: server.URL + path, DisableStandaloneSSE: true,
+				HTTPClient: &http.Client{Transport: authenticatedMCPTransport{}},
+			}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Close()
+			tools, err := session.ListTools(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantTools := []string{"query_model_calls"}
+			if path == auth.SharedMCPPath {
+				wantTools = []string{"list_projects", "query_model_calls"}
+			}
+			if len(tools.Tools) != len(wantTools) {
+				t.Fatalf("unexpected tool discovery: %+v", tools)
+			}
+			for i, name := range wantTools {
+				if tools.Tools[i].Name != name || !tools.Tools[i].Annotations.ReadOnlyHint {
+					t.Fatalf("unexpected tool: %+v", tools.Tools[i])
+				}
+			}
+			input := map[string]any{
+				"from": "2026-01-01T00:00:00Z", "to": "2026-01-02T00:00:00Z", "select": []string{"trace_id"},
+				"filters": map[string]any{"metadataKey": "rank", "metadataValue": int64(9007199254740993)},
+			}
+			if path == auth.SharedMCPPath {
+				input["project"] = "default"
+			}
+			result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "query_model_calls", Arguments: input})
+			if err != nil || result.IsError {
+				raw, _ := json.Marshal(result)
+				t.Fatalf("unexpected MCP result: %s, %v", raw, err)
+			}
+			raw, err := json.Marshal(result.StructuredContent)
+			if err != nil || !strings.Contains(string(raw), strings.Repeat("01", 16)) {
+				t.Fatalf("unexpected structured result: %s, %v", raw, err)
+			}
+			input["limit"] = 51
+			result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "query_model_calls", Arguments: input})
+			if err != nil || !result.IsError {
+				t.Fatalf("unexpected MCP result for invalid limit: %+v, %v", result, err)
+			}
+		})
 	}
 }
 

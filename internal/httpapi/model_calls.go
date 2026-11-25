@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,8 +10,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/jsonschema-go/jsonschema"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/pridkett/simple_agent_tracer/internal/auth"
 	"github.com/pridkett/simple_agent_tracer/internal/query"
 	"github.com/pridkett/simple_agent_tracer/internal/storage"
@@ -39,14 +36,21 @@ func (a *API) queryProject(w http.ResponseWriter, r *http.Request) (storage.Proj
 		return a.scopedProject(w, r, scope)
 	}
 	project := chi.URLParam(r, "project")
+	if _, ok := a.queryOAuthSubject(w, r, project); !ok {
+		return storage.Project{}, false
+	}
+	return a.oauthProject(w, r, project)
+}
+
+func (a *API) queryOAuthSubject(w http.ResponseWriter, r *http.Request, project string) (string, bool) {
 	metadata, metadataURL, enabled := a.Access.QueryResource(project)
 	if !enabled {
 		failure(w, http.StatusUnauthorized, "login or read credential required")
-		return storage.Project{}, false
+		return "", false
 	}
-	status := a.Access.CheckQueryOAuth(r, metadata.Resource)
+	subject, status := a.Access.CheckQueryOAuth(r, metadata.Resource)
 	if status == http.StatusOK {
-		return a.oauthProject(w, r, project)
+		return subject, true
 	}
 	challenge := fmt.Sprintf("Bearer resource_metadata=%q, scope=%q", metadataURL, auth.QueryReadScope)
 	message := "OAuth access token or project read credential required"
@@ -58,7 +62,7 @@ func (a *API) queryProject(w http.ResponseWriter, r *http.Request) (storage.Proj
 	}
 	w.Header().Set("WWW-Authenticate", challenge)
 	failure(w, status, message)
-	return storage.Project{}, false
+	return "", false
 }
 
 func (a *API) oauthProject(w http.ResponseWriter, r *http.Request, slug string) (storage.Project, bool) {
@@ -77,9 +81,12 @@ func (a *API) queryResourceMetadata(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if _, ok := a.oauthProject(w, r, slug); ok {
-		respond(w, http.StatusOK, metadata)
+	if slug != "" {
+		if _, ok := a.oauthProject(w, r, slug); !ok {
+			return
+		}
 	}
+	respond(w, http.StatusOK, metadata)
 }
 
 func (a *API) modelQuery(w http.ResponseWriter, r *http.Request) {
@@ -100,85 +107,6 @@ func (a *API) modelQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond(w, http.StatusOK, result)
-}
-
-type projectContextKey struct{}
-
-func (a *API) modelMCP() http.HandlerFunc {
-	server := mcp.NewServer(&mcp.Implementation{Name: "simple-agent-tracer", Version: "1.0.0"}, nil)
-	closedWorld := false
-	schema, err := jsonschema.For[query.ModelQuery](nil)
-	if err != nil {
-		panic(fmt.Sprintf("model query tool schema: %v", err))
-	}
-	// RawMessage accepts any typed JSON value, including precise integer literals.
-	schema.Properties["filters"].Properties["metadataValue"] = &jsonschema.Schema{
-		Description: "Typed JSON value to match on metadataKey.",
-	}
-	schema.Properties["limit"].Minimum = new(float64(1))
-	schema.Properties["limit"].Maximum = new(float64(50))
-	schema.OneOf = []*jsonschema.Schema{
-		{Required: []string{"sql"}},
-		{Required: []string{"from", "to"}},
-	}
-	tool := &mcp.Tool{
-		Name:        "query_model_calls",
-		Description: "Read retained model calls in this project, including costs and timings. Use from/to and filters, or a read-only SQL SELECT FROM model_calls. Select output_messages explicitly for captured model output. Follow nextCursor to read more rows.",
-		InputSchema: schema,
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: &closedWorld},
-	}
-	if a.Access.QueryOAuthEnabled() {
-		tool.Meta = mcp.Meta{"securitySchemes": []map[string]any{
-			{"type": "oauth2", "scopes": []string{auth.QueryReadScope}},
-		}}
-	}
-	server.AddTool(tool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		result := &mcp.CallToolResult{}
-		project, ok := ctx.Value(projectContextKey{}).(string)
-		if !ok {
-			result.SetError(errors.New("project authorization required"))
-			return result, nil
-		}
-		var input query.ModelQuery
-		decoder := json.NewDecoder(bytes.NewReader(req.Params.Arguments))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&input); err != nil {
-			result.SetError(errors.New("invalid query arguments"))
-			return result, nil
-		}
-		ctx, cancel := context.WithTimeout(ctx, modelQueryTimeout)
-		defer cancel()
-		rows, err := input.Run(ctx, a.Store, project, 50, 256<<10)
-		if err != nil {
-			_, message := modelQueryError(ctx, err)
-			result.SetError(errors.New(message))
-			return result, nil
-		}
-		raw, err := json.Marshal(rows)
-		if err != nil {
-			return nil, err
-		}
-		result.StructuredContent = json.RawMessage(raw)
-		result.Content = []mcp.Content{&mcp.TextContent{Text: string(raw)}}
-		return result, nil
-	})
-	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
-		Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 64 << 10,
-		// The access layer checks Host in local mode. Authenticated mode can
-		// use a public hostname through a reverse proxy on loopback.
-		DisableLocalhostProtection: true,
-	})
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !a.Access.AllowsMCPRequest(r) {
-			failure(w, http.StatusForbidden, "invalid host or origin")
-			return
-		}
-		p, ok := a.queryProject(w, r)
-		if !ok {
-			return
-		}
-		handler.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), projectContextKey{}, p.ID)))
-	}
 }
 
 func (a *API) modelExport(w http.ResponseWriter, r *http.Request) {

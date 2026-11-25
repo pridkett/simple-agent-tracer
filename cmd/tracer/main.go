@@ -77,9 +77,14 @@ func run() error {
 		return errors.New("invalid TRACER_QUERY_OAUTH")
 	}
 	access, credentials, err := auth.New(setup, local, os.Getenv("TRACER_CREDENTIALS"), auth.OIDCConfig{
-		Issuer: os.Getenv("TRACER_OIDC_ISSUER"), Client: os.Getenv("TRACER_OIDC_CLIENT_ID"), QueryOAuth: queryOAuth,
-		Secret: os.Getenv("TRACER_OIDC_CLIENT_SECRET"), Callback: os.Getenv("TRACER_OIDC_CALLBACK"),
-		AdminGroup: os.Getenv("TRACER_OIDC_ADMIN_GROUP"), LegacyOwnerSubject: os.Getenv("TRACER_OIDC_OWNER_SUBJECT"),
+		Issuer:             os.Getenv("TRACER_OIDC_ISSUER"),
+		Client:             os.Getenv("TRACER_OIDC_CLIENT_ID"),
+		Secret:             os.Getenv("TRACER_OIDC_CLIENT_SECRET"),
+		Callback:           os.Getenv("TRACER_OIDC_CALLBACK"),
+		AdminGroup:         os.Getenv("TRACER_OIDC_ADMIN_GROUP"),
+		LegacyOwnerSubject: os.Getenv("TRACER_OIDC_OWNER_SUBJECT"),
+		QueryOAuth:         queryOAuth,
+		QueryOAuthProjects: os.Getenv("TRACER_QUERY_OAUTH_PROJECTS"),
 	})
 	if err != nil {
 		return err

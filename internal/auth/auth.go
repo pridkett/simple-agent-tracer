@@ -40,6 +40,7 @@ type OIDCConfig struct {
 	Issuer, Client, Secret, Callback, AdminGroup string
 	LegacyOwnerSubject                           string
 	QueryOAuth                                   bool
+	QueryOAuthProjects                           string
 }
 
 type Access struct {
@@ -111,7 +112,7 @@ func New(ctx context.Context, local bool, raw string, config OIDCConfig) (*Acces
 		}
 		a.origin = redirect.Scheme + "://" + redirect.Host
 		if config.QueryOAuth {
-			a.queryOAuth, err = newQueryOAuth(ctx, provider, config.Issuer, a.origin)
+			a.queryOAuth, err = newQueryOAuth(ctx, provider, config.Issuer, a.origin, config.QueryOAuthProjects)
 			if err != nil {
 				return nil, nil, err
 			}

@@ -23,7 +23,7 @@ The default projection includes the call columns except `day` and `output_messag
 
 Use `POST /api/v1/projects/{project}/query` with an existing project read bearer token, an administrator session, or local access. The response contains `columns` and `rows`. Continue a row query by sending its `nextCursor` with the same query. The project and query shape are bound to the cursor. Pages sort by descending start time, then trace and span ID. Pages read retained data as of each request, so concurrent ingest, correlation, and retention can change the results.
 
-For agents, configure a Streamable HTTP MCP server at `/api/v1/projects/{project}/mcp` with the same bearer token. The read-only tool `query_model_calls` takes the same JSON arguments and returns the same result shape. Each MCP request is authorized for the project. For browser-based sign-in from a remote MCP client, see [OAuth setup](QUERY-OAUTH.md).
+For agents, connect to `/api/v1/mcp` over Streamable HTTP. Call `list_projects` with `{}` to get `{"projects":["default"]}` for a default-only reader. Pass a returned slug as `project` alongside the REST query arguments in `query_model_calls`. Each call checks project access. The project-specific endpoint `/api/v1/projects/{project}/mcp` takes the REST arguments directly. Both endpoints return the same query result shape. For browser-based sign-in from a remote MCP client, see [OAuth setup](QUERY-OAUTH.md).
 
 ### Structured request
 
