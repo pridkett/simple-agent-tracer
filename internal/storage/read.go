@@ -215,6 +215,21 @@ func (s *Store) SpanRows(ctx context.Context, project, kind, id, turn, span stri
 	return s.spanRows(ctx, project, kind, id, turn, spanSelection{span: span, cursor: after, limit: limit})
 }
 
+// Agent chat events are authoritative across all pages of a session, including
+// proxy spans correlated through an alias. Jimbo opts into transcript capture
+// separately from inference capture, so a payload-only run has an empty chat.
+func (s *Store) AgentTranscript(ctx context.Context, project, session string) (bool, error) {
+	messages := "json_type(m.payload, '$.messages') IS NOT NULL"
+	if s.postgres {
+		messages = "(m.payload::json -> 'messages') IS NOT NULL"
+	}
+	q := `SELECT EXISTS(SELECT 1 FROM spans m WHERE m.project=? AND ` + sessionSpans +
+		` AND m.background=FALSE AND m.operation IN ('invoke_agent','AGENT') AND (m.service='jimbo' OR ` + messages + `))`
+	var exists bool
+	err := s.db.QueryRowContext(ctx, s.bind(q), project, session, project, session).Scan(&exists)
+	return exists, err
+}
+
 func (s *Store) PrecedingModel(ctx context.Context, project, id, turn string, before *Position) ([]SpanRow, error) {
 	return s.spanRows(ctx, project, "sessions", id, turn, spanSelection{cursor: before, limit: 1, reverse: true, modelOnly: true})
 }

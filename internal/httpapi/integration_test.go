@@ -37,6 +37,7 @@ const otherAgentToken = "other-agent-test-token-1234567890"
 const otherProjectToken = "other-project-test-token-1234567890"
 
 type fixture struct {
+	service string
 	t       *testing.T
 	store   *storage.Store
 	handler interface {
@@ -55,7 +56,7 @@ func newFixture(t *testing.T, dsn string) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &fixture{t, store, httpapi.New(store, access, nil, nil)}
+	return &fixture{t: t, store: store, handler: httpapi.New(store, access, nil, nil), service: "fixture"}
 }
 
 func postgresFixture(t *testing.T, base string) string {
@@ -122,7 +123,7 @@ func makeSpan(traceByte, spanByte, parentByte byte, name string, at time.Time, a
 
 func (f *fixture) push(token string, compressed bool, spans ...*trace.Span) (int, error) {
 	envelope := &collector.ExportTraceServiceRequest{ResourceSpans: []*trace.ResourceSpans{{
-		Resource:   &resource.Resource{Attributes: []*common.KeyValue{attr("service.name", "fixture"), number("resource.int", 9007199254740993)}},
+		Resource:   &resource.Resource{Attributes: []*common.KeyValue{attr("service.name", f.service), number("resource.int", 9007199254740993)}},
 		ScopeSpans: []*trace.ScopeSpans{{Scope: &common.InstrumentationScope{Name: "test", Version: "1"}, Spans: spans}},
 	}}}
 	raw, err := proto.Marshal(envelope)
@@ -556,4 +557,72 @@ func TestProjectRetention(t *testing.T) {
 	tracePath := "/traces/" + strings.Repeat("01", 16)
 	f.call("GET", root+tracePath, "", "", 404)
 	f.call("GET", "/api/v1/projects/other"+tracePath, "", "", 200)
+}
+
+func TestConversationKeepsModelPayloadsInSpanDetails(t *testing.T) {
+	t.Run("sqlite", func(t *testing.T) { checkConversationCapture(t, newFixture(t, filepath.Join(t.TempDir(), "trace.db"))) })
+	t.Run("postgres", func(t *testing.T) {
+		base := os.Getenv("TRACER_TEST_POSTGRES")
+		if base == "" {
+			t.Skip("set TRACER_TEST_POSTGRES to exercise PostgreSQL")
+		}
+		checkConversationCapture(t, newFixture(t, postgresFixture(t, base)))
+	})
+}
+
+func checkConversationCapture(t *testing.T, f *fixture) {
+	now := time.Now()
+	session := attr("gen_ai.conversation.id", "story")
+	parent := makeSpan(4, 1, 0, "chat turn", now, session, attr("gen_ai.operation.name", "invoke_agent"))
+	parent.Events = []*trace.Span_Event{
+		{Name: "gen_ai.user.message", Attributes: []*common.KeyValue{attr("content", "Write the story"), attr("message.id", "prompt")}},
+		{Name: "gen_ai.assistant.message", Attributes: []*common.KeyValue{attr("content", "Final story"), attr("message.id", "answer")}},
+	}
+	child := makeSpan(4, 2, 1, "child", now.Add(time.Second), session, attr("gen_ai.operation.name", "invoke_agent"), attr("jimbo.run.kind", "child"))
+	child.Events = []*trace.Span_Event{{Name: "gen_ai.user.message", Attributes: []*common.KeyValue{attr("content", "Private assignment")}}}
+	model := makeSpan(4, 3, 2, "chat", now.Add(2*time.Second), session, attr("gen_ai.operation.name", "chat"),
+		attr("gen_ai.input.messages", `[{"role":"user","parts":[{"type":"text","content":"Write the story"}]},{"role":"user","parts":[{"type":"text","content":"Internal handoff"}]}]`),
+		attr("gen_ai.output.messages", `[{"role":"assistant","parts":[{"type":"tool_call","name":"submit_draft"}]}]`))
+	f.ingest(agentToken, 0, model, child, parent)
+	list := readJSON[struct{ Items []entityJSON }](t, f.call("GET", root+"/sessions", readerToken, "", 200))
+	path := root + "/sessions/" + list.Items[0].ID + "/timeline"
+	type page struct {
+		Transcript []struct {
+			Role string
+			Data map[string]any
+		}
+		NextCursor string
+	}
+	all := readJSON[page](t, f.call("GET", path, readerToken, "", 200))
+	if len(all.Transcript) != 2 || all.Transcript[0].Data["content"] != "Write the story" || all.Transcript[1].Data["content"] != "Final story" {
+		t.Fatalf("unexpected conversation: %+v", all.Transcript)
+	}
+	first := readJSON[page](t, f.call("GET", path+"?limit=1", readerToken, "", 200))
+	second := readJSON[page](t, f.call("GET", path+"?limit=1&cursor="+first.NextCursor, readerToken, "", 200))
+	last := readJSON[page](t, f.call("GET", path+"?limit=1&cursor="+second.NextCursor, readerToken, "", 200))
+	if len(first.Transcript) != 2 || len(second.Transcript)+len(last.Transcript) != 0 {
+		t.Fatal("model context leaked across transcript pages")
+	}
+	detail := f.call("GET", fmt.Sprintf("%s/traces/%x/spans/%x", root, model.TraceId, model.SpanId), readerToken, "", 200).Body.String()
+	if !strings.Contains(detail, "Internal handoff") || !strings.Contains(detail, "submit_draft") {
+		t.Fatal("missing model payloads in span detail")
+	}
+	// Separate Jimbo content switches also permit model capture without any
+	// chat events. Even a correlated proxy snapshot must stay out of chat.
+	f.service = "jimbo"
+	bare := attr("gen_ai.conversation.id", "payloads-only")
+	f.ingest(agentToken, 0, makeSpan(7, 1, 0, "invoke_agent jimbo", now, bare, attr("gen_ai.operation.name", "invoke_agent")))
+	f.service = "simple-llm-proxy"
+	f.ingest(agentToken, 0, makeSpan(7, 2, 1, "chat", now.Add(time.Second), bare, attr("gen_ai.operation.name", "chat"), attr("gen_ai.input.messages", `[{"role":"user","content":"private model context"}]`)))
+	list = readJSON[struct{ Items []entityJSON }](t, f.call("GET", root+"/sessions", readerToken, "", 200))
+	for _, item := range list.Items {
+		if item.ExternalID == "payloads-only" {
+			only := readJSON[page](t, f.call("GET", root+"/sessions/"+item.ID+"/timeline", readerToken, "", 200))
+			if len(only.Transcript) != 0 {
+				t.Fatal("model-only capture appeared in chat")
+			}
+			return
+		}
+	}
+	t.Fatal("missing payloads-only session")
 }

@@ -268,13 +268,14 @@ type TranscriptMessage struct {
 }
 
 type Transcript struct {
-	Messages []TranscriptMessage `json:"messages"`
-	history  []historyMessage
-	seen     map[string]bool
+	Messages        []TranscriptMessage `json:"messages"`
+	agentEventsOnly bool
+	history         []historyMessage
+	seen            map[string]bool
 }
 
-func NewTranscript() *Transcript {
-	return &Transcript{Messages: []TranscriptMessage{}, seen: map[string]bool{}}
+func NewTranscript(agentEventsOnly bool) *Transcript {
+	return &Transcript{agentEventsOnly: agentEventsOnly, Messages: []TranscriptMessage{}, seen: map[string]bool{}}
 }
 
 type historyMessage struct {
@@ -337,6 +338,16 @@ func (t *Transcript) Add(row storage.SpanRow) error {
 				t.seen[key] = true
 			}
 		}
+	}
+	if t.agentEventsOnly || span.Service == "jimbo" {
+		if (span.Operation == "invoke_agent" || span.Operation == "AGENT") && span.Attributes["jimbo.parent.id"] == nil && span.Attributes["jimbo.run.kind"] != "child" {
+			for _, m := range span.Messages {
+				if m.Role == "user" || m.Role == "assistant" {
+					add([]semantic.Message{m})
+				}
+			}
+		}
+		return nil
 	}
 	if len(span.Messages) > 0 {
 		add(conversationMessages(span.Messages))
