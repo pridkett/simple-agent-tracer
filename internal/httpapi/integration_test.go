@@ -239,11 +239,12 @@ func exerciseReportedTurnNumbers(t *testing.T, f *fixture) {
 	}
 	f.ingest(agentToken, 0, invocation(242, 2, 1, "delegated agent", now.Add(3*time.Second),
 		attr("jimbo.parent.id", "follow-up")))
+	resumed := invocation(242, 3, 1, "follow-up", now.Add(4*time.Second), number(numberKey, 7))
 	f.ingest(agentToken, 0,
 		invocation(240, 1, 0, "legacy run", now),
 		invocation(241, 1, 0, "string value", now.Add(time.Second), attr(numberKey, "99")),
 		invocation(242, 1, 0, "follow-up", now.Add(2*time.Second), number(numberKey, 7)),
-		invocation(242, 3, 1, "follow-up", now.Add(4*time.Second), number(numberKey, 7)),
+		resumed,
 		invocation(243, 1, 0, "earlier turn with a later timestamp", now.Add(5*time.Second), number(numberKey, 4)),
 	)
 	sessions := readJSON[struct{ Items []entityJSON }](t, f.call("GET", root+"/sessions", readerToken, "", 200))
@@ -276,6 +277,30 @@ func exerciseReportedTurnNumbers(t *testing.T, f *fixture) {
 	timeline := f.call("GET", path+"/"+second.Items[0].ID, readerToken, "", 200).Body.String()
 	if !strings.Contains(timeline, "delegated agent") {
 		t.Fatalf("delegated activity should be in the parent turn: %s", timeline)
+	}
+	type spanPage struct {
+		Turns      []struct{ Number int64 }
+		NextCursor string
+	}
+	timelinePath := root + "/sessions/" + sessionID + "/timeline"
+	callWindow := func(suffix string) spanPage {
+		return readJSON[spanPage](t, f.call("GET", timelinePath+suffix, readerToken, "", 200))
+	}
+	legacy := callWindow("?limit=1")
+	if len(legacy.Turns) != 1 || legacy.Turns[0].Number != 1 || legacy.NextCursor == "" {
+		t.Fatalf("first activity page should only identify turn 1: %+v", legacy)
+	}
+	next := callWindow("?limit=1&cursor=" + url.QueryEscape(legacy.NextCursor))
+	if len(next.Turns) != 1 || next.Turns[0].Number != 2 {
+		t.Fatalf("later activity pages should use session-wide numbering: %+v", next)
+	}
+	late := callWindow(fmt.Sprintf("?limit=1&focus=%x.%x", resumed.TraceId, resumed.SpanId))
+	if len(late.Turns) != 1 || late.Turns[0].Number != 7 {
+		t.Fatalf("focused resume should include turn 7 even when its first span is outside the window: %+v", late)
+	}
+	turnWindow := readJSON[spanPage](t, f.call("GET", path+"/"+second.Items[0].ID, readerToken, "", 200))
+	if len(turnWindow.Turns) != 1 || turnWindow.Turns[0].Number != 7 {
+		t.Fatalf("turn detail should use the same session-wide turn number: %+v", turnWindow)
 	}
 }
 

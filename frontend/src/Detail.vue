@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import MessageContent from './MessageContent.vue'
 import SpanInspector from './SpanInspector.vue'
 import SpanTimeline from './SpanTimeline.vue'
+import TurnMarker from './TurnMarker.vue'
 import { dateLabel, projectPath, request, statusLabel, totals } from './api'
 
 const props = defineProps({ kind: String })
@@ -43,6 +44,21 @@ const selectedKey = computed(() => {
 const focused = computed(() => focusedPage.value?.key === selectedKey.value)
 const page = computed(() => focused.value ? focusedPage.value.page : originalPage.value)
 const activityRows = computed(() => [...page.value.items, ...(page.value.parents || [])])
+const visibleTurns = computed(() => new Map((page.value.turns || []).map(turn => [turn.id, turn])))
+const conversation = computed(() => {
+  const spanTurns = new Map(page.value.items.map(row => [rowKey(row), row.turnId]))
+  const groups = []
+  for (const message of page.value.transcript || []) {
+    const turn = visibleTurns.value.get(spanTurns.get(spanKey(message.traceId, message.spanId)))
+    let group = groups.at(-1)
+    if (!group || group.turn !== turn) {
+      group = { turn, messages: [] }
+      groups.push(group)
+    }
+    group.messages.push(message)
+  }
+  return groups
+})
 const selectedInTimeline = computed(() => activityRows.value.find(row => rowKey(row) === selectedKey.value))
 const selected = computed(() => selectedInTimeline.value ||
   (outside.value && rowKey(outside.value) === selectedKey.value ? outside.value : null))
@@ -52,6 +68,7 @@ const spanLocation = (trace, span) => ({
   query: { ...route.query, span: isTrace.value ? undefined : spanKey(trace, span) },
 })
 const pageLocation = next => ({ path: currentPath.value, query: { ...route.query, span: undefined, cursor: next } })
+const turnLocation = id => route.params.turn === id ? undefined : browserBase.value + '/sessions/' + detail.value.id + '/turns/' + id
 
 function closeInspector() {
   router.push(pageLocation(cursor.value))
@@ -176,13 +193,14 @@ async function keep() {
 
 
     <div class="detail-layout" :class="{ 'trace-layout': isTrace, 'has-inspector': requestedSpan || isTrace }">
-      <SpanTimeline :rows="activityRows" :trace="isTrace" :selected-key="selectedKey" :span-location="spanLocation">
+      <SpanTimeline :rows="activityRows" :trace="isTrace" :selected-key="selectedKey" :span-location="spanLocation"
+        :turns="visibleTurns" :turn-location="turnLocation">
         <template v-if="turns.items.length" #turns>
           <details class="border-b border-gray-200 px-4 py-2 text-sm dark:border-gray-700">
             <summary class="cursor-pointer font-medium">Turns</summary>
             <ul class="mt-2 max-h-32 space-y-1 overflow-auto">
               <li v-for="turn in turns.items" :key="turn.id">
-                <RouterLink :to="browserBase + '/sessions/' + detail.id + '/turns/' + turn.id" class="link">
+                <RouterLink :to="turnLocation(turn.id)" class="link">
                   Turn {{ turn.number }} · {{ dateLabel(turn.start) }}
                 </RouterLink>
               </li>
@@ -215,15 +233,18 @@ async function keep() {
 
       <section v-if="!isTrace" class="card conversation-panel min-w-0 space-y-4 p-4">
         <h2 class="font-semibold">Conversation</h2>
-        <p v-if="!page.transcript?.length" class="text-sm">No messages captured in this window.</p>
-        <article v-for="(message, i) in page.transcript" :key="i" class="border-t pt-3">
-          <div class="mb-2 flex items-center justify-between gap-2 text-sm">
-            <h3 class="font-medium capitalize">{{ message.role || 'Message' }}</h3>
-            <RouterLink :to="spanLocation(message.traceId, message.spanId)" class="link shrink-0 text-xs"
-              @click="selectedInTimeline && selectedKey === spanKey(message.traceId, message.spanId) && reveal(selectedKey)">Inspect span</RouterLink>
-          </div>
-          <MessageContent :data="message.data" />
-        </article>
+        <p v-if="!conversation.length" class="text-sm">No messages captured in this window.</p>
+        <div v-for="({ turn, messages }, group) in conversation" :key="group" class="space-y-4">
+          <h3 v-if="turn"><TurnMarker :number="turn.number" :to="turnLocation(turn.id)" /></h3>
+          <article v-for="(message, i) in messages" :key="i" class="border-t pt-3">
+            <div class="mb-2 flex items-center justify-between gap-2 text-sm">
+              <component :is="turn ? 'h4' : 'h3'" class="font-medium capitalize">{{ message.role || 'Message' }}</component>
+              <RouterLink :to="spanLocation(message.traceId, message.spanId)" class="link shrink-0 text-xs"
+                @click="selectedInTimeline && selectedKey === spanKey(message.traceId, message.spanId) && reveal(selectedKey)">Inspect span</RouterLink>
+            </div>
+            <MessageContent :data="message.data" />
+          </article>
+        </div>
       </section>
     </div>
   </template>

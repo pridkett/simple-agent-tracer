@@ -373,7 +373,7 @@ func (a *API) spans(kind string, turnDetail bool) http.HandlerFunc {
 			storeError(w, err)
 			return
 		}
-		turn := chi.URLParam(r, "turn")
+		turnID := chi.URLParam(r, "turn")
 		focus := r.URL.Query().Get("focus")
 		var rows []storage.SpanRow
 		if focus != "" {
@@ -382,9 +382,9 @@ func (a *API) spans(kind string, turnDetail bool) http.HandlerFunc {
 				return
 			}
 			traceID, spanID, _ := strings.Cut(focus, ".")
-			rows, err = a.Store.FocusedSpanRows(r.Context(), p.ID, kind, e.ID, turn, traceID, spanID, limit)
+			rows, err = a.Store.FocusedSpanRows(r.Context(), p.ID, kind, e.ID, turnID, traceID, spanID, limit)
 		} else {
-			rows, err = a.Store.SpanRows(r.Context(), p.ID, kind, e.ID, turn, "", after, limit+1)
+			rows, err = a.Store.SpanRows(r.Context(), p.ID, kind, e.ID, turnID, "", after, limit+1)
 		}
 		if err != nil {
 			storeError(w, err)
@@ -398,6 +398,7 @@ func (a *API) spans(kind string, turnDetail bool) http.HandlerFunc {
 			query.Page[storage.SpanRow]
 			Parents    []storage.SpanRow          `json:"parents,omitempty"`
 			Transcript *[]query.TranscriptMessage `json:"transcript,omitempty"`
+			Turns      []turn                     `json:"turns,omitempty"`
 		}{Page: query.Page[storage.SpanRow]{Items: rows}}
 		if len(rows) > limit {
 			page.Items = rows[:limit]
@@ -422,7 +423,7 @@ func (a *API) spans(kind string, turnDetail bool) http.HandlerFunc {
 		transcript := query.NewTranscript(agentEventsOnly)
 		if !agentEventsOnly && (after != nil || focus != "") && len(page.Items) > 0 {
 			priorPosition := &page.Items[0].Position
-			prior, err := a.Store.PrecedingModel(r.Context(), p.ID, e.ID, turn, priorPosition)
+			prior, err := a.Store.PrecedingModel(r.Context(), p.ID, e.ID, turnID, priorPosition)
 			if err != nil {
 				storeError(w, err)
 				return
@@ -442,6 +443,14 @@ func (a *API) spans(kind string, turnDetail bool) http.HandlerFunc {
 			}
 		}
 		page.Transcript = &transcript.Messages
+		turns, err := a.Store.TurnsInWindow(r.Context(), p.ID, e.ID, page.Items)
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		for _, row := range turns {
+			page.Turns = append(page.Turns, turn{row.ID, row.Number, timestamp(row.Time)})
+		}
 		respond(w, 200, page)
 	}
 }
