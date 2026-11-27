@@ -360,21 +360,44 @@ func (s *Store) Observations(ctx context.Context, project, kind, id string, visi
 	return rows.Err()
 }
 
-func (s *Store) Turns(ctx context.Context, project, id string, after *Position, limit int) ([]Entry, error) {
-	q := `SELECT m.turn_id AS id,MIN(m.sort_time) AS started,
+const sessionTurnNumbers = `SELECT id,started,COALESCE(reported_number,ROW_NUMBER() OVER(ORDER BY started,id)) AS number FROM (
+  SELECT m.turn_id AS id,MIN(m.sort_time) AS started,
   CASE WHEN MIN(m.own_turn_number)=MAX(m.own_turn_number) THEN MIN(m.own_turn_number) END AS reported_number
   FROM spans m WHERE m.project=? AND m.turn_id<>'' AND ` + visibleTurn + `
   AND ` + sessionSpans + `
-  GROUP BY m.turn_id`
+  GROUP BY m.turn_id) grouped`
+
+func (s *Store) Turns(ctx context.Context, project, id string, after *Position, limit int) ([]Entry, error) {
+	q := "SELECT id,started,number FROM (" + sessionTurnNumbers + ") turns"
 	args := []any{project, id, project, id}
-	q = `SELECT * FROM (SELECT id,started,COALESCE(reported_number,ROW_NUMBER() OVER(ORDER BY started,id))
-  FROM (` + q + `) grouped) turns`
 	if after != nil {
 		q += " WHERE (started,id)>(?,?)"
 		args = append(args, after.Time, after.ID)
 	}
 	q += " ORDER BY started,id LIMIT ?"
 	args = append(args, limit)
+	return s.readTurns(ctx, q, args)
+}
+
+// TurnsInWindow uses session-wide numbers for turns in a page of spans.
+func (s *Store) TurnsInWindow(ctx context.Context, project, id string, window []SpanRow) ([]Entry, error) {
+	args := []any{project, id, project, id}
+	seen := map[string]bool{}
+	for _, row := range window {
+		if row.Turn != "" && !seen[row.Turn] {
+			seen[row.Turn] = true
+			args = append(args, row.Turn)
+		}
+	}
+	if len(seen) == 0 {
+		return nil, nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(seen)), ",")
+	q := "SELECT id,started,number FROM (" + sessionTurnNumbers + ") turns WHERE id IN (" + placeholders + ") ORDER BY started,id"
+	return s.readTurns(ctx, q, args)
+}
+
+func (s *Store) readTurns(ctx context.Context, q string, args []any) ([]Entry, error) {
 	rows, err := s.db.QueryContext(ctx, s.bind(q), args...)
 	if err != nil {
 		return nil, err

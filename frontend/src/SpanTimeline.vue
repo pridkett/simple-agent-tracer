@@ -2,12 +2,15 @@
 import { computed } from 'vue'
 import { elapsed, statusLabel } from './api'
 import SpanIcon from './SpanIcon.vue'
+import TurnMarker from './TurnMarker.vue'
 
 const props = defineProps({
   rows: { type: Array, required: true },
   trace: Boolean,
   selectedKey: String,
   spanLocation: { type: Function, required: true },
+  turns: { type: Map, required: true },
+  turnLocation: { type: Function, required: true },
 })
 
 const extent = computed(() => {
@@ -29,22 +32,27 @@ const rows = computed(() => {
     const second = BigInt(b.time)
     if (first !== second) return first < second ? -1 : 1
     return keyOf(a.data).localeCompare(keyOf(b.data))
-  }).map(row => row.data)
-  const ids = new Set(spans.map(keyOf))
+  })
+  const ids = new Set(spans.map(row => keyOf(row.data)))
   const children = new Map()
-  for (const span of spans) {
+  for (const row of spans) {
+    const span = row.data
     const parentKey = span.traceId + '.' + span.parentId
     const parent = ids.has(parentKey) ? parentKey : ''
     if (!children.has(parent)) children.set(parent, [])
-    children.get(parent).push(span)
+    children.get(parent).push(row)
   }
   const ordered = []
   const seen = new Set()
-  function visit(span, depth) {
+  let previousTurn
+  function visit(row, depth) {
+    const span = row.data
     const key = keyOf(span)
     if (seen.has(key)) return
     seen.add(key)
-    ordered.push({ span, depth })
+    const turn = props.turns.get(row.turnId)
+    ordered.push({ span, depth, turn: turn?.id === previousTurn ? undefined : turn })
+    previousTurn = turn?.id
     for (const child of children.get(key) || []) visit(child, depth + 1)
   }
   for (const span of children.get('') || []) visit(span, 0)
@@ -70,26 +78,31 @@ function waterfall(span) {
     <div class="activity-list overflow-auto">
       <p v-if="!rows.length" class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">No spans in this window.</p>
       <ul v-else class="divide-y divide-gray-100 dark:divide-gray-700">
-        <li v-for="{ span, depth } in rows" :id="'timeline-' + keyOf(span)" :key="keyOf(span)" :aria-level="depth + 1" class="scroll-my-1">
-          <RouterLink :to="spanLocation(span.traceId, span.id)"
-            class="block border-l-2 px-3 py-2.5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-500"
-            :class="keyOf(span) === selectedKey ? 'border-indigo-600 bg-indigo-50 dark:border-indigo-400 dark:bg-indigo-950/60' : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-900/60'"
-            :aria-current="keyOf(span) === selectedKey ? 'true' : undefined"
-            :style="{ paddingLeft: 12 + Math.min(depth, 5) * 14 + 'px' }">
-            <span class="flex items-center gap-2">
-              <SpanIcon :span="span" />
-              <span class="truncate text-sm font-medium" :title="span.name || span.id">{{ span.name || span.id }}</span>
-            </span>
-            <span class="mt-0.5 flex flex-wrap gap-x-2 pl-6 text-xs text-gray-600 dark:text-gray-300">
-              <span>{{ elapsed(span.start, span.end) }}</span>
-              <span :class="{ 'text-red-700 dark:text-red-300': span.status === 'STATUS_CODE_ERROR' }">{{ statusLabel(span.status) }}</span>
-              <span v-if="span.partial || span.truncated" class="text-amber-700 dark:text-amber-300">Partial capture</span>
-            </span>
-            <span v-if="trace" class="relative mt-1.5 block h-1 overflow-hidden rounded bg-gray-100 dark:bg-gray-900" aria-hidden="true">
-              <span class="absolute h-full rounded bg-indigo-500" :style="waterfall(span)" />
-            </span>
-          </RouterLink>
-        </li>
+        <template v-for="{ span, depth, turn } in rows" :key="keyOf(span)">
+          <li v-if="turn" class="px-3 pb-1 pt-2">
+            <TurnMarker :number="turn.number" :to="turnLocation(turn.id)" />
+          </li>
+          <li :id="'timeline-' + keyOf(span)" :aria-level="depth + 1" class="scroll-my-1">
+            <RouterLink :to="spanLocation(span.traceId, span.id)"
+              class="block border-l-2 px-3 py-2.5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-500"
+              :class="keyOf(span) === selectedKey ? 'border-indigo-600 bg-indigo-50 dark:border-indigo-400 dark:bg-indigo-950/60' : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-900/60'"
+              :aria-current="keyOf(span) === selectedKey ? 'true' : undefined"
+              :style="{ paddingLeft: 12 + Math.min(depth, 5) * 14 + 'px' }">
+              <span class="flex items-center gap-2">
+                <SpanIcon :span="span" />
+                <span class="truncate text-sm font-medium" :title="span.name || span.id">{{ span.name || span.id }}</span>
+              </span>
+              <span class="mt-0.5 flex flex-wrap gap-x-2 pl-6 text-xs text-gray-600 dark:text-gray-300">
+                <span>{{ elapsed(span.start, span.end) }}</span>
+                <span :class="{ 'text-red-700 dark:text-red-300': span.status === 'STATUS_CODE_ERROR' }">{{ statusLabel(span.status) }}</span>
+                <span v-if="span.partial || span.truncated" class="text-amber-700 dark:text-amber-300">Partial capture</span>
+              </span>
+              <span v-if="trace" class="relative mt-1.5 block h-1 overflow-hidden rounded bg-gray-100 dark:bg-gray-900" aria-hidden="true">
+                <span class="absolute h-full rounded bg-indigo-500" :style="waterfall(span)" />
+              </span>
+            </RouterLink>
+          </li>
+        </template>
       </ul>
     </div>
     <slot name="pagination" />
