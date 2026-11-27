@@ -104,7 +104,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version),0) FROM schema_migrations`).Scan(&version); err != nil {
 			return err
 		}
-		const latest = 3
+		const latest = 4
 		if version > latest {
 			return fmt.Errorf("database schema version %d is newer than supported", version)
 		}
@@ -119,6 +119,8 @@ func (s *Store) migrate(ctx context.Context) error {
 				path = "migrations/002_ingest_keys.sql"
 			case 3:
 				path = "migrations/003_model_calls.sql"
+			case 4:
+				path = "migrations/004_turn_numbers.sql"
 			}
 			ddl, err := migrations.ReadFile(path)
 			if err != nil {

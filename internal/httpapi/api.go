@@ -448,7 +448,7 @@ func (a *API) spans(kind string, turnDetail bool) http.HandlerFunc {
 
 type turn struct {
 	ID     string `json:"id"`
-	Number int    `json:"number"`
+	Number int64  `json:"number"`
 	Start  string `json:"start"`
 }
 
