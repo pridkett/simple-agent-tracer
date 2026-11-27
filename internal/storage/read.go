@@ -21,7 +21,7 @@ type Position struct {
 }
 
 type Entry struct {
-	Number    int    `json:"-"`
+	Number    int64  `json:"-"`
 	ID        string `json:"id"`
 	Time      int64  `json:"-"`
 	Received  int64  `json:"-"`
@@ -361,11 +361,14 @@ func (s *Store) Observations(ctx context.Context, project, kind, id string, visi
 }
 
 func (s *Store) Turns(ctx context.Context, project, id string, after *Position, limit int) ([]Entry, error) {
-	q := `SELECT m.turn_id AS id,MIN(m.sort_time) AS started FROM spans m WHERE m.project=? AND m.turn_id<>'' AND ` + visibleTurn + `
+	q := `SELECT m.turn_id AS id,MIN(m.sort_time) AS started,
+  CASE WHEN MIN(m.own_turn_number)=MAX(m.own_turn_number) THEN MIN(m.own_turn_number) END AS reported_number
+  FROM spans m WHERE m.project=? AND m.turn_id<>'' AND ` + visibleTurn + `
   AND ` + sessionSpans + `
   GROUP BY m.turn_id`
 	args := []any{project, id, project, id}
-	q = "SELECT * FROM (SELECT id,started,ROW_NUMBER() OVER(ORDER BY started,id) FROM (" + q + ") grouped) turns"
+	q = `SELECT * FROM (SELECT id,started,COALESCE(reported_number,ROW_NUMBER() OVER(ORDER BY started,id))
+  FROM (` + q + `) grouped) turns`
 	if after != nil {
 		q += " WHERE (started,id)>(?,?)"
 		args = append(args, after.Time, after.ID)

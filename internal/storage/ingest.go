@@ -86,11 +86,12 @@ func (s *Store) Ingest(ctx context.Context, p Project, source string, spans []se
 			if started == 0 {
 				started = span.Received
 			}
+			turn, turnNumber := span.ConversationTurn()
 			_, err = exec(`INSERT INTO spans(project,trace,id,parent,source,service,status,operation,request_model,response_model,name,tool,
-    proxy_app,application,span_kind,own_session,own_turn,session_id,model_call,sort_time,activity,usage,payload)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, p.ID, span.Trace, span.ID, span.Parent, source, clean(span.Service),
+    proxy_app,application,span_kind,own_session,own_turn,own_turn_number,session_id,model_call,sort_time,activity,usage,payload)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, p.ID, span.Trace, span.ID, span.Parent, source, clean(span.Service),
 				span.Status, clean(span.Operation), clean(span.RequestModel), clean(span.ResponseModel), clean(span.Name), clean(span.Tool),
-				clean(span.ProxyApp), clean(span.Application), span.Kind, session, clean(span.Turn), session, span.ModelCall, started, latest, string(usage), string(raw))
+				clean(span.ProxyApp), clean(span.Application), span.Kind, session, clean(turn), turnNumber, session, span.ModelCall, started, latest, string(usage), string(raw))
 			if err != nil {
 				return err
 			}

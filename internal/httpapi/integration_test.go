@@ -217,12 +217,65 @@ func TestDatabaseParity(t *testing.T) {
 				t.Fatalf("unexpected project after reopen: %+v %v", p, err)
 			}
 			exerciseIngestKeys(t, f, dsn)
+			exerciseReportedTurnNumbers(t, newFixture(t, dsn))
 			if backend == "sqlite" {
 				sqliteResult = snapshot
 			} else if snapshot != sqliteResult {
 				t.Fatalf("API results differ:\n%s\n%s", sqliteResult, snapshot)
 			}
 		})
+	}
+}
+
+func exerciseReportedTurnNumbers(t *testing.T, f *fixture) {
+	t.Helper()
+	const native = "jimbo-turn-number-fixture"
+	const numberKey = "jimbo.conversation.turn_number"
+	now := time.Now()
+	invocation := func(traceID, spanID, parentID byte, runID string, at time.Time, extra ...*common.KeyValue) *trace.Span {
+		attrs := []*common.KeyValue{attr("gen_ai.conversation.id", native), attr("gen_ai.operation.name", "invoke_agent"),
+			attr("gen_ai.agent.call.id", runID)}
+		return makeSpan(traceID, spanID, parentID, runID, at, append(attrs, extra...)...)
+	}
+	f.ingest(agentToken, 0, invocation(242, 2, 1, "delegated agent", now.Add(3*time.Second),
+		attr("jimbo.parent.id", "follow-up")))
+	f.ingest(agentToken, 0,
+		invocation(240, 1, 0, "legacy run", now),
+		invocation(241, 1, 0, "string value", now.Add(time.Second), attr(numberKey, "99")),
+		invocation(242, 1, 0, "follow-up", now.Add(2*time.Second), number(numberKey, 7)),
+		invocation(242, 3, 1, "follow-up", now.Add(4*time.Second), number(numberKey, 7)),
+		invocation(243, 1, 0, "earlier turn with a later timestamp", now.Add(5*time.Second), number(numberKey, 4)),
+	)
+	sessions := readJSON[struct{ Items []entityJSON }](t, f.call("GET", root+"/sessions", readerToken, "", 200))
+	var sessionID string
+	for _, session := range sessions.Items {
+		if session.ExternalID == native {
+			sessionID = session.ID
+			break
+		}
+	}
+	if sessionID == "" {
+		t.Fatal("Jimbo test session was not ingested")
+	}
+	type page struct {
+		Items []struct {
+			ID     string
+			Number int64
+		}
+		Next string `json:"nextCursor"`
+	}
+	path := root + "/sessions/" + sessionID + "/turns"
+	first := readJSON[page](t, f.call("GET", path+"?limit=2", readerToken, "", 200))
+	if len(first.Items) != 2 || first.Items[0].Number != 1 || first.Items[1].Number != 2 || first.Next == "" {
+		t.Fatalf("legacy turns should use chronological numbers: %+v", first)
+	}
+	second := readJSON[page](t, f.call("GET", path+"?limit=2&cursor="+url.QueryEscape(first.Next), readerToken, "", 200))
+	if len(second.Items) != 2 || second.Items[0].Number != 7 || second.Items[1].Number != 4 || second.Next != "" {
+		t.Fatalf("Jimbo turns should retain their reported numbers: %+v", second)
+	}
+	timeline := f.call("GET", path+"/"+second.Items[0].ID, readerToken, "", 200).Body.String()
+	if !strings.Contains(timeline, "delegated agent") {
+		t.Fatalf("delegated activity should be in the parent turn: %s", timeline)
 	}
 }
 

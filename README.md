@@ -101,6 +101,8 @@ Select a `decision` span in Activity to inspect calls to `/v1/decisions` and `/v
 
 Install the optional integrations from [the agent setup instructions](integrations/README.md). Both use the proxy for model snapshots and billing. Enable agent tool payload capture independently.
 
+In Jimbo sessions, the Turns list uses the 1-based integer `jimbo.conversation.turn_number` from top-level agent invocations when available. Turns without a reported number use their chronological position. Newly ingested delegated Jimbo activity is grouped with its parent turn.
+
 ## Bulk model-call queries
 
 Query model responses, costs, and timings across a project with

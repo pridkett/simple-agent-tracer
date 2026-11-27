@@ -108,6 +108,20 @@ type Span struct {
 	Diagnostics               []string          `json:"diagnostics,omitempty"`
 }
 
+// ConversationTurn returns the producer identity and optional number used to group spans.
+func (s Span) ConversationTurn() (string, *int64) {
+	if s.Operation != "invoke_agent" || s.Turn == "" {
+		return s.Turn, nil
+	}
+	if parent := s.Attributes.str("jimbo.parent.id"); parent != "" && len(parent) <= 1024 {
+		return parent, nil
+	}
+	if number, ok := s.Attributes["jimbo.conversation.turn_number"].(int64); ok && number > 0 {
+		return s.Turn, &number
+	}
+	return s.Turn, nil
+}
+
 type Event struct {
 	Name              string     `json:"name"`
 	Time              uint64     `json:"time,string"`
